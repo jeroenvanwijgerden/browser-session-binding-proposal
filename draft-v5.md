@@ -6,7 +6,7 @@
 
 **Date:** January 2026
 
-**Version:** 0.2 (Draft for public comment)
+**Version:** 0.5 (Draft for public comment)
 
 **Disclosure:** The protocol design and core ideas are the author's original work. Large language models were used to identify edge cases, stress-test the security model, and draft this document for a standards audience. The author reviewed and lightly edited the resulting text.
 
@@ -22,7 +22,7 @@ This proposal describes browser-native infrastructure for securely binding out-o
 
 The protocol is agnostic to what is being bound. Authentication is one use case; others are payments, document signing, and access grants. The protocol provides the secure binding layer; the semantics of what is bound are determined by the service and companion application. This is infrastructure, not an authentication protocol.
 
-The protocol is designed to be implementable by any service without platform vendor permission or specialized expertise, and without the need for a proprietary companion application. By providing simple, well-defined infrastructure, this proposal democratizes access to secure cross-device operations; any service that can implement three HTTPS endpoints can participate.
+The protocol is designed to be implementable by any service without platform vendor permission or specialized expertise, and without the need for a proprietary companion application. By providing simple, well-defined infrastructure, this proposal democratizes access to secure cross-device operations; any service that can implement four HTTPS endpoints can participate.
 
 ---
 
@@ -43,15 +43,18 @@ The protocol is designed to be implementable by any service without platform ven
   - [4.3 Example Usage](#43-example-usage)
   - [4.4 User Agent UI Requirements](#44-user-agent-ui-requirements)
   - [4.5 Transfer Mechanisms](#45-transfer-mechanisms)
+    - [4.5.1 Transfer Payload Format](#451-transfer-payload-format)
+    - [4.5.2 QR Code Capacity Analysis](#452-qr-code-capacity-analysis)
   - [4.6 Safety of Service-Provided Text](#46-safety-of-service-provided-text)
 - [5. Protocol Flow](#5-protocol-flow)
   - [5.1 Overview](#51-overview)
-  - [5.2 Phase 1: Initialization](#52-phase-1-initialization)
-  - [5.3 Phase 2: Out-of-Band Operation (Negotiation)](#53-phase-2-out-of-band-operation-negotiation)
-  - [5.4 Phase 3: Completion](#54-phase-3-completion)
-  - [5.5 State Machine (Server-side)](#55-state-machine-server-side)
-  - [5.6 Multi-Negotiation Detection (Defense in Depth)](#56-multi-negotiation-detection-defense-in-depth)
-  - [5.7 Security Mode Variations](#57-security-mode-variations)
+  - [5.2 Phase 1: Handshake](#52-phase-1-handshake)
+  - [5.3 Phase 2: Initialization](#53-phase-2-initialization)
+  - [5.4 Phase 3: Out-of-Band Operation (Negotiation)](#54-phase-3-out-of-band-operation-negotiation)
+  - [5.5 Phase 4: Completion](#55-phase-4-completion)
+  - [5.6 State Machine (Server-side)](#56-state-machine-server-side)
+  - [5.7 Multi-Negotiation Detection](#57-multi-negotiation-detection)
+  - [5.8 Security Mode Variations](#58-security-mode-variations)
 - [6. The Pairing Code](#6-the-pairing-code)
   - [6.1 The Attack: Session Fixation via QR Observation](#61-the-attack-session-fixation-via-qr-observation)
   - [6.2 The Solution: Pairing Code](#62-the-solution-pairing-code)
@@ -110,9 +113,10 @@ The protocol is designed to be implementable by any service without platform ven
 - [License](#license)
 - [References](#references)
 - [Appendix A: HTTP Endpoint Specifications](#appendix-a-http-endpoint-specifications)
-  - [A.1 Initialize Endpoint](#a1-initialize-endpoint)
-  - [A.2 Negotiate Endpoint](#a2-negotiate-endpoint)
-  - [A.3 Complete Endpoint](#a3-complete-endpoint)
+  - [A.1 Handshake Endpoint](#a1-handshake-endpoint)
+  - [A.2 Initialize Endpoint](#a2-initialize-endpoint)
+  - [A.3 Negotiate Endpoint](#a3-negotiate-endpoint)
+  - [A.4 Complete Endpoint](#a4-complete-endpoint)
 - [Appendix B: WebSocket Protocol (Optional)](#appendix-b-websocket-protocol-optional)
   - [B.1 Connection](#b1-connection)
   - [B.2 Server Messages](#b2-server-messages)
@@ -133,7 +137,7 @@ The protocol is designed to be implementable by any service without platform ven
 
 The vast majority of services do not have the influence to sway vendors or the resources to build and maintain a companion app.
 
-**Solution.** This protocol decouples secure cross-device binding from dedicated apps. Services implement three server endpoints instead of building companion applications. Users could use a single general-purpose companion app (e.g., a password manager, authenticator) for multiple services.
+**Solution.** This protocol decouples secure cross-device binding from dedicated apps. Services implement four server endpoints instead of building companion applications. Users could use a single general-purpose companion app (e.g., a password manager, authenticator) for multiple services.
 
 The flow: A web page requests a browser-native UI. The browser starts a session with the server. The browser offers a QR code (or other means of data transfer). Operated by the user, a companion app scans the QR code and negotiates with the server. Upon successful negotiation, the server stages some result (e.g., a JWT) and sends the app a pairing code. The user enters the pairing code into the browser. The browser completes the session by retrieving the staged result. Optionally, the server can decide to skip the pairing code (trading UX for security).
 
@@ -155,7 +159,7 @@ The flow: A web page requests a browser-native UI. The browser starts a session 
 - **Flexible Security/UX tradeoff.** Optional user-entered code. Shape of code is specified by the service.
 - **Same trust model.** Users already trust their browser, their authenticator app, and the services they use. This protocol extends those existing relationships rather than introducing new ones.
 
-**Implementation.** Minimal for web pages (one API call). Moderate for browsers and companion apps. Server-side: three endpoints, short-lived state, single expiration deadline.
+**Implementation.** Minimal for web pages (one API call). Moderate for browsers and companion apps. Server-side: four endpoints, short-lived state, single expiration deadline.
 
 **Call to action.** This proposal seeks feedback on the protocol design, security model, and API shape. The author invites critique from security researchers, browser engineers, and identity specialists.
 
@@ -196,7 +200,7 @@ This proposal decouples secure cross-device binding from dedicated apps. It prov
 
 - **Removes gatekeeping.** Any service can participate. No platform vendor approval required.
 - **Removes the app burden.** Services implement server endpoints, not apps. Users use one general-purpose companion app (a password manager, authenticator, or similar) for all services.
-- **Solves the hard problems once.** The browser handles trusted UI, session binding, and cryptographic secret establishment. Services don't need cryptographic expertise—just three HTTPS endpoints.
+- **Solves the hard problems once.** The browser handles trusted UI, session binding, and cryptographic secret establishment. Services don't need cryptographic expertise—just four HTTPS endpoints.
 
 The result: secure cross-device authentication becomes accessible to any service, and users get a consistent experience with a single companion app instead of app-per-service fragmentation.
 
@@ -251,7 +255,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 **Companion Application.** A native application on another device (or the same device). Receives session parameters out-of-band, facilitates whatever operation the user performs, and provides a pairing code for the user to enter. This may be a service-specific app (e.g., a bank's app) or a general-purpose third-party app (e.g., a password manager or authenticator). The companion application's internal behavior is outside the scope of this protocol.
 
-**Service.** The backend that the companion application communicates with. Implements three endpoints, maintains short-lived binding state, and provides the result to the user agent upon successful binding.
+**Service.** The backend that the companion application communicates with. Implements four endpoints, maintains short-lived binding state, and provides the result to the user agent upon successful binding.
 
 Additional terminology:
 
@@ -290,6 +294,7 @@ interface OutOfBandBinding {
 dictionary BindingRequest {
   // Endpoint paths (MUST be same-origin; combined with page origin by user agent)
   // Each path MUST NOT exceed 2048 characters
+  required USVString handshakeEndpoint;   // Browser calls this to negotiate algorithm
   required USVString initializeEndpoint;  // Browser calls this to initialize ceremony
   required USVString negotiateEndpoint;   // App calls this to negotiate
   required USVString completeEndpoint;    // Browser calls this to retrieve result
@@ -342,7 +347,7 @@ Services that use separate API domains (e.g., `api.example.com` for a page on `e
 
 | Field | Limit |
 |-------|-------|
-| `initializeEndpoint`, `negotiateEndpoint`, `completeEndpoint` | Max 2048 characters each |
+| `handshakeEndpoint`, `initializeEndpoint`, `negotiateEndpoint`, `completeEndpoint` | Max 2048 characters each |
 | `displayName` | Max 64 characters |
 | `title` | Max 128 characters |
 | `description` | Max 1024 characters |
@@ -354,8 +359,9 @@ User agents MUST reject requests that exceed these limits.
 ### 4.3 Example Usage
 
 ```javascript
-// Login example - server enables pairing code via initialize response
+// Login example - server enables pairing code via handshake response
 const result = await navigator.outOfBandBinding.request({
+  handshakeEndpoint: '/bind/handshake',
   initializeEndpoint: '/bind/initialize',
   negotiateEndpoint: '/bind/negotiate',
   completeEndpoint: '/bind/complete',
@@ -377,6 +383,7 @@ if (result.status === 'success') {
 ```javascript
 // Payment example - server controls pairing code format
 const result = await navigator.outOfBandBinding.request({
+  handshakeEndpoint: '/bind/handshake',
   initializeEndpoint: '/bind/initialize',
   negotiateEndpoint: '/bind/negotiate',
   completeEndpoint: '/bind/complete',
@@ -406,8 +413,9 @@ if (result.status === 'success') {
 // Streamlined UX example - server disables pairing code (reduced security)
 // Use when: the companion app authenticates the user before negotiating,
 // or when the service accepts the risk of session fixation attacks.
-// The server's initialize response includes: pairing_code: {type: "disabled"}
+// The server's handshake response includes: pairing_code_specification: {type: "disabled"}
 const result = await navigator.outOfBandBinding.request({
+  handshakeEndpoint: '/bind/handshake',
   initializeEndpoint: '/bind/initialize',
   negotiateEndpoint: '/bind/negotiate',
   completeEndpoint: '/bind/complete',
@@ -423,7 +431,7 @@ const result = await navigator.outOfBandBinding.request({
 
 ### 4.4 User Agent UI Requirements
 
-When `request()` is called, the user agent MUST first initialize the ceremony with the service (see Section 5.2), then display a trusted, modal UI containing:
+When `request()` is called, the user agent MUST first perform the handshake (see Section 5.2) and initialize the ceremony with the service (see Section 5.3), then display a trusted, modal UI containing:
 
 1. **Origin** (mandatory, user agent-verified): The full origin of the requesting page, prominently displayed. This is the only information the user agent can verify.
 
@@ -462,48 +470,84 @@ Other mechanisms user agents MAY support:
 
 User agents SHOULD provide at least one visual mechanism (QR code) and one non-visual mechanism (manual code entry) to ensure accessibility.
 
-The transfer payload SHOULD include:
-- The negotiate endpoint URL (as full URL constructed from origin + path)
-- The session ID
-- The display name
-- The service-provided payload (if any)
+#### 4.5.1 Transfer Payload Format
 
-The exact encoding format (JSON, CBOR, custom) is an implementation detail, though standardization would improve interoperability between different companion applications.
+To ensure interoperability between any compliant companion application and any compliant service, this specification mandates a baseline JSON format for transfer payloads:
 
-#### 4.5.1 QR Code Capacity Analysis
+```json
+{
+  "version": 1,
+  "url": "https://example.com/bind/negotiate",
+  "session_id": "vK9xQ2mN7pR4wY6zA3bC8dE",
+  "name": "Example Service",
+  "payload": "eyJhbW91bnQiOiI0OS45OSIsImN1cnJlbmN5IjoiRVVSIn0"
+}
+```
+
+**Field definitions and bounds:**
+
+| Field | Required | Max Length | Description |
+|-------|----------|------------|-------------|
+| `version` | Yes | N/A | Protocol version. MUST be `1` for this specification. |
+| `url` | Yes | 512 chars | Full negotiate endpoint URL (origin + path). |
+| `session_id` | Yes | 64 chars | The session identifier from initialization (base64url encoded). |
+| `name` | Yes | 64 chars | Service display name. If the companion app does not recognize the URL, it MUST display this name along with an indication that the service is unknown. |
+| `payload` | No | 1024 chars | Service-specific data as base64-encoded JSON. This limit corresponds to approximately 768 bytes of raw data before base64 encoding. |
+
+**Total payload limit:** The entire JSON transfer payload (including all field names, values, and JSON syntax) MUST NOT exceed 1500 bytes when encoded as UTF-8. This ensures reliable scanning with QR code Version 12-15 at error correction level M.
+
+*Note:* The API allows service payloads up to 4096 bytes, but QR code capacity limits the transfer payload to approximately 768 bytes of service data. Services requiring larger payloads SHOULD use alternative transfer mechanisms (deep links, NFC) or redesign their payload to fit within QR constraints.
+
+**Field justification:** Every field in the transfer payload consumes scarce QR code capacity. Each field above is included because:
+- `version`: Required for future protocol evolution without breaking existing apps
+- `url`: Required for the app to know where to send the negotiate request
+- `session_id`: Required to identify the ceremony
+- `name`: Required for user confirmation, especially when the URL doesn't match a known service
+- `payload`: Optional; only included when the service needs to pass additional data
+
+**Payload encoding:** When present, the `payload` field MUST contain base64-encoded JSON. The companion application MUST first base64-decode the value, then parse the result as JSON. Note that this means service-provided data is encoded twice: first as JSON then base64 to produce the `payload` field value, then again as part of the outer JSON that is encoded into the QR code.
+
+**Example payload encoding chain:**
+1. Service wants to send: `{"amount":"49.99","currency":"EUR"}`
+2. JSON serialize → `{"amount":"49.99","currency":"EUR"}`
+3. Base64 encode → `eyJhbW91bnQiOiI0OS45OSIsImN1cnJlbmN5IjoiRVVSIn0`
+4. This string becomes the `payload` field value in the transfer JSON
+
+#### 4.5.2 QR Code Capacity Analysis
 
 QR codes have versions 1-40, with increasing capacity. The question: **Is QR capacity sufficient for this protocol's payload?**
 
 **What must be encoded:**
-- Session ID: max 64 characters when base64url encoded (typically 22 for UUIDv4)
-- Negotiate endpoint URL (full URL)
-- Display name (optional, for UX)
-- Service payload (optional)
+- `version`: 1 byte (the digit `1`)
+- `url`: Negotiate endpoint URL (full URL)
+- `session_id`: max 64 characters (typically 22 for UUIDv4)
+- `name`: Service display name
+- `payload`: Optional, base64-encoded JSON
 
 **Realistic payload sizes:**
 
 *Minimal (short URL, UUIDv4 session ID):*
 ```
-{"u":"https://example.com/bind/negotiate",
-"s":"dGhpcyBpcyBhIHV1aWQ0","d":"Example"}
+{"version":1,"url":"https://example.com/bind/negotiate",
+"session_id":"dGhpcyBpcyBhIHV1aWQ0","name":"Example"}
 ```
-~90 bytes
+~110 bytes
 
 *Typical (moderate URL, UUIDv4 session ID):*
 ```
-{"url":"https://auth.example-service.com/api/oob/negotiate",
-"sessionId":"dGhpcyBpcyBhIHV1aWQ0Lg","displayName":"Example Service"}
+{"version":1,"url":"https://auth.example-service.com/api/oob/negotiate",
+"session_id":"dGhpcyBpcyBhIHV1aWQ0Lg","name":"Example Service"}
 ```
-~140 bytes
+~150 bytes
 
 *Large (enterprise URL, max-length session ID, included payload):*
 ```
-{"url":"https://authentication.corporate-solutions.example.com/api/v2/binding/negotiate",
-"sessionId":"ZXh0cmVtZWx5IGxvbmcgc2Vzc2lvbiBpZCB0aGF0IHVzZXMgYWxsIDY0IGNoYXJz",
-"displayName":"Corporate Portal",
+{"version":1,"url":"https://auth.corporate-solutions.example.com/api/v2/bind/negotiate",
+"session_id":"ZXh0cmVtZWx5IGxvbmcgc2Vzc2lvbiBpZCB0aGF0IHVzZXMgYWxsIDY0IGNoYXJz",
+"name":"Corporate Portal",
 "payload":"eyJhbW91bnQiOiI0OS45OSJ9"}
 ```
-~280 bytes
+~290 bytes
 
 **QR code capacity (binary mode, Level L error correction):**
 
@@ -516,7 +560,7 @@ QR codes have versions 1-40, with increasing capacity. The question: **Is QR cap
 
 **Conclusion:** Typical payloads fit comfortably in Version 5-10 QR codes. Even enterprise-scale URLs with max-length session IDs and service payloads fit within Version 15. QR capacity is not a practical constraint for this protocol.
 
-**Display considerations:** A Version 10 QR code (57×57 modules) displayed at 4 pixels per module requires only 228×228 pixels—easily accommodated in browser UI. Higher versions remain scannable on modern smartphone cameras.
+**Display considerations:** A Version 10 QR code (57×57 modules) displayed at 4 pixels per module requires only 228×228 pixels—easily accommodated in browser UI. Higher versions (up to Version 20) remain scannable on modern smartphone cameras at typical browser UI sizes. Very high versions (Version 30-40) become increasingly difficult to scan reliably from browser UIs due to module density—these should be avoided. The 1500-byte total payload limit (Section 4.5.1) ensures payloads fit comfortably within Version 12-15, well within the reliable scanning range.
 
 ### 4.6 Safety of Service-Provided Text
 
@@ -548,7 +592,7 @@ This is the same trust model as existing web content: a page can display any tex
 
 ### 5.1 Overview
 
-The diagram below shows the full ceremony with the pairing code enabled. When the code is disabled, the corresponding steps are skipped (see Section 5.7 for variations).
+The diagram below shows the full ceremony with the pairing code enabled. When the code is disabled, the corresponding steps are skipped (see Section 5.8 for variations).
 
 ```
 ┌──────────┐   ┌────────────┐   ┌─────────────┐   ┌─────────┐
@@ -559,9 +603,15 @@ The diagram below shows the full ceremony with the pairing code enabled. When th
      │ request()     │                 │               │
      ├──────────────>│                 │               │
      │               │                 │               │
-     │               │ [Generate ephemeral key pair]   │
+     │               │   Handshake (algorithms)        │
+     │               ├────────────────────────────────>│
+     │               │   algorithm, pairing_code_spec   │
+     │               │<────────────────────────────────┤
      │               │                 │               │
-     │               │     Initialize (public_key)      │
+     │               │ [Generate ephemeral key pair    │
+     │               │  using agreed algorithm]        │
+     │               │                 │               │
+     │               │   Initialize (public_key)       │
      │               ├────────────────────────────────>│
      │               │      session_id                 │
      │               │<────────────────────────────────┤
@@ -598,29 +648,53 @@ The diagram below shows the full ceremony with the pairing code enabled. When th
 * = optional, service-configurable
 ```
 
-### 5.2 Phase 1: Initialization
+### 5.2 Phase 1: Handshake
 
-The web page calls `navigator.outOfBandBinding.request()`. The user agent:
+Before generating keys or initializing a session, the browser and server must agree on a signature algorithm. The web page calls `navigator.outOfBandBinding.request()`. The user agent:
 
-1. Generates an ephemeral key pair (e.g., ECDSA P-256 or Ed25519)
+1. Constructs the handshake endpoint URL by combining the path with the web page's origin
+2. Sends a handshake request containing the algorithms the browser supports (up to 16 algorithm names, each at most 16 characters)
+3. Receives either:
+   - **Accepted:** The server chose an algorithm from the browser's list, along with the pairing code configuration
+   - **Rejected:** The server does not support any of the browser's offered algorithms
+
+If rejected, the user agent MUST display an error to the user indicating that the browser is not compatible with this service. The ceremony terminates.
+
+If accepted, the user agent proceeds to initialization using the agreed algorithm.
+
+**Handshake request/response:**
+
+The service, upon receiving a handshake request:
+
+1. Examines the list of algorithms offered by the browser
+2. Selects an algorithm it supports (server's choice)
+3. Returns the selected algorithm and pairing code configuration
+
+**Algorithm recommendations:** Implementations SHOULD support `ES256` (ECDSA P-256) and `Ed25519` to maximize interoperability. These algorithms are widely supported by WebCrypto implementations and provide strong security with reasonable performance.
+
+### 5.3 Phase 2: Initialization
+
+The user agent, having completed the handshake:
+
+1. Generates an ephemeral key pair using the algorithm agreed during handshake
 2. Constructs the initialize endpoint URL by combining the path with the web page's origin
 3. Sends an initialization request to the initialize endpoint with the public key
 4. Receives the session ID from the service
 5. Only after successful initialization, displays trusted UI with:
    - Transfer mechanism(s) providing the negotiate endpoint URL, session ID, display name, and any service-provided payload
-   - **Pairing code input field** (if the service enabled the pairing code; otherwise skipped)
+   - **Pairing code input field** (if the service enabled the pairing code during handshake; otherwise skipped)
 
 **Initialization request/response:**
 
 The service, upon receiving an initialization request:
 
 1. Generates a cryptographically random session ID (UUIDv4 recommended; see Section 11.2)
-2. Stores `{session_id, public_key, expires_at}`
+2. Stores `{session_id, public_key, algorithm, expires_at}`
 3. Returns the session ID to the browser
 
 **Critical:** The private key never leaves the browser. At completion, the browser will sign a message with the private key to prove it is the same browser that initialized the ceremony. An attacker who observes the session ID (e.g., via the QR code) cannot complete the ceremony—they lack the private key.
 
-### 5.3 Phase 2: Out-of-Band Operation (Negotiation)
+### 5.4 Phase 3: Out-of-Band Operation (Negotiation)
 
 The user transfers the session parameters to the companion application via their chosen mechanism.
 
@@ -633,19 +707,25 @@ The companion application:
 5. Upon completion, receives from the service:
    - A **pairing code** (if enabled by service; user must enter this into the browser)
 
-The service, upon successful completion of the operation:
+The service, upon receiving a negotiate request:
 
-1. If pairing code is enabled: generates a pairing code using the configured characters and length
-2. Stages the result: stores `{session_id, result_data, [pairing_code], negotiated: true}`
-3. Returns the optional pairing code to the companion application
+1. Checks whether a successful negotiation has already occurred for this session (see Section 5.6)
+2. **If this is the first successful negotiation:**
+   - Performs the requested operation
+   - If pairing code is enabled: generates a pairing code using the configured characters and length
+   - Stages the result: stores `{session_id, result_data, [pairing_code], negotiated: true}`
+   - Marks the session as `COMPROMISED` if any prior negotiation attempts occurred
+   - Returns success with the pairing code (if enabled)
+3. **If a successful negotiation already exists:**
+   - Marks the session as `COMPROMISED`
+   - Returns a "compromised" response with no pairing code
+   - The companion application MUST inform the user their environment is compromised and they cannot complete the flow
 
-**Multi-negotiation detection:** The service SHOULD track whether a negotiation has already occurred for this session. If an attacker negotiates before the user, the user's negotiation attempt can detect this and warn the user: "Another device already performed this operation. Your environment may be compromised." This is defense-in-depth; the primary protection against session fixation is the pairing code (Section 6).
+Failed operations (e.g., authentication failure) do not change ceremony state or trigger compromise detection. An attacker who races to call the negotiate endpoint with invalid credentials simply fails; the ceremony is unaffected.
 
-Failed operations (e.g., authentication failure) do not change ceremony state. An attacker who races to call the negotiate endpoint with invalid credentials simply fails; the ceremony is unaffected. If an attacker could successfully complete the operation (e.g., authenticate as the user), that represents a compromise outside this protocol's scope--the attacker can already impersonate the user regardless of this protocol.
+If pairing code is enabled and negotiation succeeded, the companion application displays it for the user to enter into the browser.
 
-If pairing code is enabled, the companion application displays it for the user to enter into the browser.
-
-### 5.4 Phase 3: Completion
+### 5.5 Phase 4: Completion
 
 **If pairing code is enabled:** The user reads the pairing code from the companion application and enters it into the browser's trusted UI. The browser then sends a complete request to the complete endpoint with:
 
@@ -680,9 +760,11 @@ This is unconditional protection with defense-in-depth properties:
 - **TLS compromise resistant:** Even if TLS is broken during initialization, only the public key is exposed (useless to attacker)
 - **Server breach resistant:** The server stores only public keys; a database breach reveals nothing useful for completing ceremonies
 
-### 5.5 State Machine (Server-side)
+### 5.6 State Machine (Server-side)
 
 The server maintains the following states for each session:
+
+**Note on handshake:** The handshake phase (Phase 1) is stateless—it does not create server-side session state. The browser sends its supported algorithms, and the server responds with its selection and pairing code configuration. No session_id exists yet; no state is persisted. The server remembers nothing from the handshake. Session state is created only when the browser calls the initialize endpoint, which includes the public key (implicitly specifying the agreed algorithm). The server stores the algorithm alongside the public key at initialization time.
 
 ```
                          ┌─────────────────────────────────────────┐
@@ -721,19 +803,47 @@ The server maintains the following states for each session:
 | COMPLETED | Browser retrieved result with valid signature (and pairing_code if enabled); cleanup performed |
 | EXPIRED | Timeout reached; state discarded |
 
-### 5.6 Multi-Negotiation Detection (Defense in Depth)
+**Compromise detection state machine:**
 
-While the pairing code is the primary protection against session fixation, the server SHOULD also detect when multiple negotiations occur for the same session.
+Independent of the ceremony state, each session tracks whether the environment has been detected as compromised:
 
-If an attacker negotiates for a session (binding their own identity), and then the legitimate user also attempts to negotiate, the server can:
+```
+┌───────────────┐   second negotiate    ┌──────────────┐
+│ UNCOMPROMISED │─────────────────────>│  COMPROMISED │
+└───────────────┘       attempt         └──────────────┘
+```
 
-1. Detect that a negotiation already occurred
-2. Respond to the user's app with a warning: "Another device already performed this operation for this session. Possible session fixation attack. Your environment may be compromised."
-3. The user can then abort and investigate
+A session transitions to `COMPROMISED` when:
+- A negotiate request arrives after a successful negotiation already exists, OR
+- A negotiate request succeeds but prior (failed or successful) negotiate attempts were detected
 
-This detection is defense-in-depth. The pairing code already prevents the attack from succeeding (the attacker's pairing code differs from the user's). Multi-negotiation detection provides an additional signal that something is wrong.
+Once `COMPROMISED`, the session remains compromised. The compromise flag is included in:
+- The negotiate response (for subsequent negotiators who cannot complete)
+- The complete response (for the first negotiator who can complete but should be warned)
 
-### 5.7 Security Mode Variations
+### 5.7 Multi-Negotiation Detection
+
+The server MUST detect when multiple negotiations are attempted for the same session. This detection serves two purposes:
+
+1. **Prevent DoS attacks:** If a user negotiates first, an attacker's subsequent negotiation attempt cannot disrupt the user's flow.
+2. **Warn of compromised environments:** When multiple negotiations are detected, all parties are informed that the session identifier was likely observed by an attacker.
+
+**Behavior specification:**
+
+- **First successful negotiation:** Proceeds normally. The app receives success and a pairing code (if enabled). The flow can complete.
+- **Subsequent negotiation attempts:** The server returns a "compromised" response with no pairing code. The app MUST inform the user that their environment is compromised and they cannot complete the flow—they should close the browser-native UI.
+- **First negotiator's completion:** If the session was marked `COMPROMISED` (due to subsequent negotiation attempts), the complete response includes a `compromised` field. The browser MUST inform the user that the flow completed successfully and safely, but their environment appears to be compromised.
+
+**Why this is safe:**
+
+The flow remains secure regardless of who negotiates first:
+
+- **If user negotiates first:** User completes safely. Attacker's subsequent attempt fails (no code). If attacker tried, user sees "compromised" warning on completion.
+- **If attacker negotiates first:** Attacker gets a code but cannot type it (observation-only). User's subsequent attempt gets "compromised" response and is told to abort. Attacker's code becomes useless.
+
+The server cannot distinguish attacker from user—it simply enforces "first negotiator proceeds, others are blocked and warned."
+
+### 5.8 Security Mode Variations
 
 Services choose their position on the security/UX spectrum by enabling or disabling the pairing code:
 
@@ -793,11 +903,10 @@ The pairing code binds the user's app to the completion. Only the app that negot
 
 If the attacker negotiates first:
 - Attacker's app receives pairing code "ABC"
-- User's app also negotiates—multi-negotiation detection can warn the user
-- Even without the warning: user's app receives different pairing code "XYZ"
-- User enters "XYZ" into browser; browser sends "XYZ" to complete endpoint
-- "XYZ" matches user's negotiation, not attacker's
-- User receives their own result, not attacker's
+- User's app attempts to negotiate—receives "compromised" response with no pairing code
+- User's app MUST warn the user: environment is compromised, cannot complete this flow
+- User does not have a pairing code to enter; the ceremony cannot proceed
+- The attacker has "ABC" but cannot type it into the user's browser (keyboard access required)
 
 If the attacker negotiates and user hasn't scanned yet:
 - Attacker's app receives pairing code "ABC"
@@ -809,18 +918,24 @@ If the attacker negotiates and user hasn't scanned yet:
 
 **Security guarantee:** If the user enters a pairing code *after* their app has received one, the protocol is unconditionally safe—regardless of what attackers have done. This holds even if the user mistypes the code; an incorrect entry simply fails validation and the user can retry. The browser MAY send multiple complete requests to allow for typos; incorrect codes do not invalidate the ceremony.
 
-The only theoretical vulnerability occurs if the user enters a code *before* their app has negotiated, and by probabilistic chance enters the attacker's code. With a 4-character alphanumeric code (36^4 ≈ 1.7 million possibilities), this probability is negligible—and requires the user to act before seeing any code from their app, which is not part of the normal flow.
+**Two-barrier defense model:** The pairing code provides two independent barriers against attack:
+
+1. **Friction barrier (primary):** Users do not enter codes before their app displays one—there's nothing to enter. The code input field requires deliberate action, and a multi-character code creates sufficient friction that speculative typing is unnatural. This behavioral barrier should be validated by UX research, but it represents the expected user flow.
+
+2. **Probability barrier (secondary):** Even if the friction barrier fails—the user somehow enters a code before their app negotiates—they would need to guess the attacker's code by chance. With a 4-character alphanumeric code (36^4 ≈ 1.7 million possibilities), this probability is negligible. This serves as a fail-safe; its adequacy should be validated by security analysis based on the service's risk tolerance.
+
+The security argument does *not* depend on timing analysis of the "attack window." Timing varies unpredictably by user and context. Instead, security rests on the friction barrier making premature entry unlikely, with the probability barrier providing defense-in-depth for the rare case where friction fails.
 
 ### 6.3 Pairing Code Specification
 
-The service controls the pairing code format via the initialize endpoint response. The `pairing_code` field is **required** and uses a tagged union to make the choice explicit:
+The service controls the pairing code format via the handshake endpoint response. The `pairing_code_specification` field is **required** and uses a tagged union to make the choice explicit:
 
 **Enabled:**
 ```json
 {
-  "status": "initialized",
-  "session_id": "vK9xQ2mN7pR4wY6zA3bC8dE...",
-  "pairing_code": {
+  "type": "accepted",
+  "algorithm": "ES256",
+  "pairing_code_specification": {
     "type": "enabled",
     "characters": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"],
     "length": 4
@@ -831,15 +946,15 @@ The service controls the pairing code format via the initialize endpoint respons
 **Disabled:**
 ```json
 {
-  "status": "initialized",
-  "session_id": "vK9xQ2mN7pR4wY6zA3bC8dE...",
-  "pairing_code": {
+  "type": "accepted",
+  "algorithm": "ES256",
+  "pairing_code_specification": {
     "type": "disabled"
   }
 }
 ```
 
-If the `pairing_code` field is missing, the browser rejects the response as malformed. This explicit design prevents accidental security degradation from forgetting to include the field.
+If the `pairing_code_specification` field is missing from an accepted handshake response, the browser rejects the response as malformed. This explicit design prevents accidental security degradation from forgetting to include the field.
 
 **Specification fields (when `type` is `"enabled"`):**
 
@@ -850,9 +965,9 @@ If the `pairing_code` field is missing, the browser rejects the response as malf
 
 The server should choose characters that the user can comfortably type. Two sources of information are available:
 
-1. **`Accept-Language` header:** Per RFC 7231, browsers send this header with every HTTP request, indicating the user's language preferences. The initialize request already includes it.
+1. **`Accept-Language` header:** Per RFC 7231, browsers send this header with every HTTP request, indicating the user's language preferences. The handshake request includes it.
 
-2. **`input_hints` field:** The browser MAY include an `input_hints` object in the initialize request body, containing a `keyboard_layout` field if the browser can determine the active keyboard layout.
+2. **`input_hints` field:** The browser MAY include an `input_hints` object in the handshake request body, containing a `keyboard_layout` field if the browser can determine the active keyboard layout.
 
 Servers should consider these hints when selecting characters. For example, a Japanese user (`Accept-Language: ja`) might be better served with digits or hiragana rather than Latin letters. Western Arabic numerals (`0-9`) are widely accessible across keyboards but not truly universal—Arabic, Persian, Hindi, Thai, and other scripts have their own numeral systems. Servers should use `Accept-Language` and `input_hints` to make informed choices.
 
@@ -1003,7 +1118,7 @@ This is the "login CSRF" or session fixation attack. The attacker doesn't try to
 
 **When pairing code is disabled:** The protection is reduced. If the attacker negotiates first and the user never scans (or scans late), the user's browser may receive the attacker's result. Services disabling the pairing code should understand this reduced protection.
 
-**Detection as a security feature.** Multi-negotiation detection (Section 5.6) can reveal attacks. If both the user and attacker negotiate, the user's app can be warned. This doesn't prevent the attack (the pairing code does that) but provides valuable intelligence about compromised environments.
+**Detection as a security feature.** Multi-negotiation detection (Section 5.7) can reveal attacks. If both the user and attacker negotiate, the user's app can be warned. This doesn't prevent the attack (the pairing code does that) but provides valuable intelligence about compromised environments.
 
 See Section 6 for detailed attack analysis and the boundary condition (keyboard access defeats all authentication).
 
@@ -1036,7 +1151,7 @@ Users already trust their authenticator apps and password managers to protect se
 
 Users already trust services to correctly implement authentication: to hash passwords properly, to generate unpredictable session tokens, to enforce expiration. A service that fails at these is already vulnerable.
 
-**This protocol does not introduce new trust relationships.** It extends existing responsibilities to cover new operations. The browser already must generate secure randomness and key pairs (for various web platform features like WebCrypto); now it also generates ephemeral key pairs for session binding. The service already must implement secure session management; now it implements three more endpoints following the same principles.
+**This protocol does not introduce new trust relationships.** It extends existing responsibilities to cover new operations. The browser already must generate secure randomness and key pairs (for various web platform features like WebCrypto); now it also generates ephemeral key pairs for session binding. The service already must implement secure session management; now it implements four more endpoints following the same principles.
 
 The security of this protocol degrades gracefully with implementation quality—just like existing web security. A poorly implemented browser is dangerous with or without this protocol. A poorly implemented service is dangerous with or without this protocol. This protocol adds surface area, but not new categories of trust.
 
@@ -1112,6 +1227,8 @@ This means the current approach has more potential for denial-of-service via sta
 
 Given that proven DoS mitigation techniques exist and the state is minimal and short-lived, the improved UX and stronger security guarantees were deemed worth the tradeoff.
 
+**Protocol scope:** This specification intentionally does not include DoS mitigation mechanisms (such as proof-of-work). Servers MUST implement DoS protections orthogonally using standard techniques appropriate to their environment—rate limiting, CAPTCHA, IP reputation, requiring authenticated sessions before initialization, or other measures. This separation keeps the protocol simple and allows servers to choose mitigations suited to their specific threat model and infrastructure.
+
 ---
 
 ## 9. Privacy Considerations
@@ -1166,10 +1283,11 @@ A new device displays a binding request. A management app approves provisioning.
 
 ### 11.1 Service Endpoint Specifications
 
-The service implements three HTTP endpoints. A summary:
+The service implements four HTTP endpoints. A summary:
 
 | Endpoint | Caller | Purpose |
 |----------|--------|---------|
+| handshake | Browser | Negotiate signature algorithm, receive pairing_code_specification |
 | initialize | Browser | Send public_key, receive session_id |
 | negotiate | App | Perform operation, stage result, receive pairing_code (if enabled) |
 | complete | Browser | Retrieve result with signature (+ pairing_code if enabled) |
@@ -1217,7 +1335,7 @@ With the pairing code enabled, this protocol requires one user-entered code. Wit
 
 **Service flexibility:**
 
-Services choose their security/UX tradeoff by enabling or disabling the pairing code (see Section 5.7). A service that:
+Services choose their security/UX tradeoff by enabling or disabling the pairing code (see Section 5.8). A service that:
 
 - **Wants maximum security** enables the pairing code
 - **Wants WhatsApp-like UX** disables the code, relying on signature verification for hijacking protection and accepting fixation risk (or mitigating it via app-side authentication)
@@ -1257,7 +1375,7 @@ This section provides a concrete assessment of what each party must implement, t
 For service developers evaluating this protocol, here is a clear breakdown:
 
 **What you implement:**
-- **Three HTTPS endpoints** (initialize, negotiate, complete) — see Appendix A for specifications
+- **Four HTTPS endpoints** (handshake, initialize, negotiate, complete) — see Appendix A for specifications
 - **Short-lived state storage** — session data that expires in 60-120 seconds
 - **Your operation logic** — whatever happens when the user performs the operation (authentication, payment approval, document signing, etc.)
 - **One JavaScript API call** — to invoke the browser's trusted UI
@@ -1277,7 +1395,7 @@ The state management and endpoint logic can be deployed as an off-the-shelf cont
 
 2. **Flush** — Called only when the entire ceremony succeeds: "Apply the result." For authentication: create a session. For payments: record the transaction. This is work your server would do anyway.
 
-The container handles everything in between: the three endpoints, session state, token generation, expiration. Your service never sees the protocol complexity.
+The container handles everything in between: the four endpoints, session state, token generation, expiration. Your service never sees the protocol complexity.
 
 ### 12.2 Web Page (Service's JavaScript)
 
@@ -1288,6 +1406,7 @@ The web page makes a single API call and handles the result. No state management
 ```javascript
 // Complete implementation
 const result = await navigator.outOfBandBinding.request({
+  handshakeEndpoint: '/bind/handshake',
   initializeEndpoint: '/bind/initialize',
   negotiateEndpoint: '/bind/negotiate',
   completeEndpoint: '/bind/complete',
@@ -1304,15 +1423,18 @@ if (result.status === 'success') { /* proceed */ }
 The user agent implements:
 
 1. **API surface:** One method (`request()`) with straightforward parameters
-2. **Key generation:** Ephemeral key pair (ECDSA P-256 or Ed25519) using WebCrypto API
-3. **Initialization:** HTTP request to initialize endpoint with public key, receive session_id
-4. **Trusted UI:** Modal display showing origin, service text, QR code, status, code input
-5. **QR code encoding:** Standard library operation
-6. **Signing:** Sign completion requests with private key
-7. **Status monitoring:** Polling (or WebSocket/SSE) for negotiation completion
-8. **Result delivery:** Set cookies or return data to promise
+2. **Handshake:** HTTP request to handshake endpoint with supported algorithms, receive agreed algorithm and pairing code configuration
+3. **Key generation:** Ephemeral key pair using agreed algorithm via WebCrypto API
+4. **Initialization:** HTTP request to initialize endpoint with public key, receive session_id
+5. **Trusted UI:** Modal display showing origin, service text, QR code, status, code input
+6. **QR code encoding:** Standard library operation
+7. **Signing:** Sign completion requests with private key
+8. **Status monitoring:** Polling (or WebSocket/SSE) for negotiation completion
+9. **Result delivery:** Set cookies or return data to promise
+10. **Compromise notification:** If the complete response contains a `compromised` field set to `true`, the user agent MUST inform the user that their environment may be compromised—even though the session completed successfully, another device also scanned the QR code and attempted to negotiate. The user SHOULD be advised to review their security and consider whether the session should be trusted.
 
 **State held during a ceremony:**
+- Agreed algorithm (from handshake)
 - Session ID (from server)
 - Private key (never transmitted)
 - Endpoint URLs
@@ -1332,6 +1454,7 @@ The companion application implements:
 4. **Negotiate request:** Single HTTP POST
 5. **Pairing code display:** Show code to user (if enabled)
 6. **Result display:** Show success/failure
+7. **Compromise handling:** If the negotiate response indicates `compromised`, the application MUST warn the user that the environment is compromised (another device also scanned the QR code) and that they cannot complete this flow. The user should be advised to start a new session from a secure browser.
 
 **State held during a ceremony:**
 - Endpoint URL (from QR)
@@ -1342,11 +1465,12 @@ All state is local to the ceremony. The app needs no persistent state related to
 
 ### 12.5 Service (Server)
 
-The server implements three endpoints and retains short-lived information.
+The server implements four endpoints and retains short-lived information.
 
 **What the server must retain during a ceremony:**
 
 For each active ceremony (identified by session_id):
+- The algorithm (from handshake, needed for signature verification)
 - The public_key (from initialization)
 - Whether negotiation has occurred
 - The result data to deliver (from negotiation)
@@ -1359,6 +1483,7 @@ The entire ceremony shares a single expiration deadline. When the deadline passe
 
 | Endpoint | Receives | Does | Returns |
 |----------|----------|------|---------|
+| handshake | algorithms[] | Select supported algorithm | algorithm, pairing_code_specification |
 | initialize | public_key | Generate session_id, store public_key | session_id |
 | negotiate | session_id, operation data | Validate operation, stage result, generate pairing_code if enabled | pairing_code (if enabled) |
 | complete | session_id, signature, timestamp, [pairing_code] | Verify signature against stored public_key, validate code if enabled, return result | result_data |
@@ -1382,10 +1507,10 @@ All state expires with the ceremony. Successful completion allows eager cleanup,
 
 **Reference implementation potential:** The binding protocol is sufficiently isolated that a reference implementation could be published as:
 - A library (Node.js, Python, Go, etc.)
-- A Docker container exposing the three endpoints
+- A Docker container exposing the four endpoints
 - A cloud function template
 
-Services would integrate by proxying the three endpoints to this component and providing two hooks: a validate function (stateless operation check) and a flush function (apply result on success). See Section 12.1 for details.
+Services would integrate by proxying the four endpoints to this component and providing two hooks: a validate function (stateless operation check) and a flush function (apply result on success). See Section 12.1 for details.
 
 ---
 
@@ -1396,14 +1521,13 @@ This proposal defines the core protocol. Several aspects are intentionally flexi
 | Aspect | Flexibility | Notes |
 |--------|-------------|-------|
 | Transfer mechanism | User agent choice | QR, NFC, Bluetooth, USB, audio, manual entry, deep links |
-| Transfer payload format | Implementation detail | JSON, CBOR, or custom; standardization aids interoperability |
+| Transfer payload format | Standardized (JSON v1) | Baseline format mandated in Section 4.5.1; future versions via `version` field |
 | Pairing code | Service-configured | Explicit enable/disable; any characters; length 1-6 |
 | Completion mode | Service choice | cookie, object, bytes, redirect |
 | Timeout | Service choice | Per-operation configuration |
 | Operation semantics | Service/app choice | Protocol is agnostic to what is being bound |
 
 Future extensions might include:
-- Standardized payload format for interoperability
 - Additional completion modes
 - Bidirectional communication during the operation phase
 - Multi-step approval flows
@@ -1465,10 +1589,11 @@ The protocol supports this via alternative transfer mechanisms: copy-paste, deep
 
 Session IDs are single-use and short-lived. Signatures include timestamps to prevent replay. The server enforces expiration and rejects stale timestamps. Replaying a request after the session expires or with an old timestamp has no effect.
 
-### Q: Why three endpoints instead of fewer?
+### Q: Why four endpoints instead of fewer?
 
 Each endpoint has a distinct caller and purpose:
 
+- **handshake**: Called by browser → server. Negotiates signature algorithm, receives pairing code configuration.
 - **initialize**: Called by browser → server. Sends public key, receives session ID.
 - **negotiate**: Called by app → server. Performs the operation, stages result.
 - **complete**: Called by browser → server. Retrieves the result with signed proof of ownership.
@@ -1483,7 +1608,7 @@ The ceremony times out. No state persists beyond the configured timeout. The use
 
 The protocol is a transport layer that sits alongside existing authentication. A service continues using whatever authentication it has (passwords, passkeys, OAuth, SAML). This protocol just provides a new way to deliver the authentication result to a browser session.
 
-Services can adopt it incrementally—add the three endpoints (or deploy a reference container) and offer it as an additional login method. No dedicated companion app is required; any protocol-compliant third-party app (password managers, authenticators) will work.
+Services can adopt it incrementally—add the four endpoints (or deploy a reference container) and offer it as an additional login method. No dedicated companion app is required; any protocol-compliant third-party app (password managers, authenticators) will work.
 
 ### Q: Does a service need to build its own companion app?
 
@@ -1532,7 +1657,6 @@ This protocol does not introduce new trust relationships. It extends existing re
 - Usability studies
 - Reference implementations
 - Accessibility review
-- Standardization of transfer payload format for cross-implementation interoperability
 - W3C standardization
 
 ---
@@ -1638,7 +1762,7 @@ This document is licensed under [CC BY 4.0](https://creativecommons.org/licenses
 
 ## Appendix A: HTTP Endpoint Specifications
 
-This appendix provides detailed request/response formats for the three HTTP endpoints.
+This appendix provides detailed request/response formats for the four HTTP endpoints.
 
 **Encoding:** All JSON payloads MUST be UTF-8 encoded per RFC 8259. The `Content-Type` header SHOULD be `application/json; charset=utf-8`.
 
@@ -1654,15 +1778,95 @@ This appendix provides detailed request/response formats for the three HTTP endp
 | `error` | Max 64 characters |
 | `error_description` / `message` | Max 256 characters |
 | `status_url` | Max 2048 characters |
+| `algorithm` (in handshake) | Max 16 characters |
 
-### A.1 Initialize Endpoint
+**HTTP headers:**
 
-Called by the browser to create a ceremony and receive a session ID.
+| Header | Direction | Required | Description |
+|--------|-----------|----------|-------------|
+| `Content-Type: application/json` | Request | MUST | All requests with a body |
+| `Content-Type: application/json` | Response | MUST | All responses |
+| `Accept-Language` | Request | SHOULD | Browser sends automatically; used for pairing code character selection |
+
+Servers MAY require additional headers (e.g., `Authorization`, `X-CSRF-Token`) as part of their orthogonal security measures. Such requirements are outside this specification's scope.
+
+### A.1 Handshake Endpoint
+
+Called by the browser before initialization to negotiate the signature algorithm and receive pairing code configuration.
+
+**Request:**
+```
+POST {handshakeEndpoint}
+Accept-Language: ja, en-US;q=0.9
+Content-Type: application/json
+```
+
+```json
+{
+  "algorithms": ["ES256", "Ed25519"],
+  "input_hints": {
+    "keyboard_layout": "us"
+  }
+}
+```
+
+The `algorithms` array contains the signature algorithms the browser supports, in order of preference. The array MUST contain at least 1 and at most 16 algorithm identifiers. Each identifier MUST NOT exceed 16 characters.
+
+The `Accept-Language` header is sent automatically by browsers per RFC 7231. The `input_hints` field is optional; the browser includes `keyboard_layout` if it can determine the active keyboard layout. Servers should use these hints to choose appropriate characters for the pairing code (see Section 6.3).
+
+**Response (accepted):**
+```json
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "type": "accepted",
+  "algorithm": "ES256",
+  "pairing_code_specification": {
+    "type": "enabled",
+    "characters": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"],
+    "length": 4
+  }
+}
+```
+
+The server selects one algorithm from the browser's list that it supports. The `pairing_code_specification` object specifies whether the pairing code is enabled and, if so, the allowed characters and length.
+
+**Response (accepted, pairing code disabled):**
+```json
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "type": "accepted",
+  "algorithm": "Ed25519",
+  "pairing_code_specification": {
+    "type": "disabled"
+  }
+}
+```
+
+**Response (rejected):**
+```json
+HTTP/1.1 200 OK
+Content-Type: application/json
+
+{
+  "type": "rejected"
+}
+```
+
+If the server does not support any of the browser's offered algorithms, it returns a rejected response. The browser MUST display an error to the user indicating that the browser is not compatible with this service.
+
+**Algorithm identifiers:** Implementations SHOULD support `ES256` (ECDSA with P-256 and SHA-256) and `Ed25519` to maximize interoperability. Other common identifiers include `ES384`, `ES512`, and `Ed448`.
+
+### A.2 Initialize Endpoint
+
+Called by the browser after a successful handshake to create a ceremony and receive a session ID.
 
 **Request:**
 ```
 POST {initializeEndpoint}
-Accept-Language: ja, en-US;q=0.9
 Content-Type: application/json
 ```
 
@@ -1673,9 +1877,6 @@ Content-Type: application/json
     "curve": "P-256",
     "x": "base64url-encoded-x-coordinate",
     "y": "base64url-encoded-y-coordinate"
-  },
-  "input_hints": {
-    "keyboard_layout": "jp-106"
   }
 }
 ```
@@ -1686,16 +1887,13 @@ Or for Ed25519:
   "public_key": {
     "algorithm": "Ed25519",
     "key": "base64url-encoded-public-key"
-  },
-  "input_hints": {
-    "keyboard_layout": "us"
   }
 }
 ```
 
-The `Accept-Language` header is sent automatically by browsers per RFC 7231. The `input_hints` field is optional; the browser includes `keyboard_layout` if it can determine the active keyboard layout. Servers should use these hints to choose appropriate characters for the pairing code (see Section 6.3).
+The public key algorithm MUST match the algorithm agreed during handshake.
 
-**Response (success, with pairing code enabled):**
+**Response (success):**
 ```json
 HTTP/1.1 200 OK
 Content-Type: application/json
@@ -1703,36 +1901,26 @@ Content-Type: application/json
 {
   "status": "initialized",
   "session_id": "vK9xQ2mN7pR4wY6zA3bC8dE...",
-  "pairing_code": {
-    "type": "enabled",
-    "characters": ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T", "U", "V", "W", "X", "Y", "Z"],
-    "length": 4
-  },
   "status_url": "/bind/status"
 }
 ```
 
-**Response (success, with pairing code disabled, without optional status_url):**
+**Response (success, without optional status_url):**
 ```json
 HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
   "status": "initialized",
-  "session_id": "vK9xQ2mN7pR4wY6zA3bC8dE...",
-  "pairing_code": {
-    "type": "disabled"
-  }
+  "session_id": "vK9xQ2mN7pR4wY6zA3bC8dE..."
 }
 ```
 
-The `pairing_code` field is **required**. If missing, the browser rejects the response as malformed. When `type` is `"enabled"`, the browser displays an input field accepting only the specified characters. When `type` is `"disabled"`, no code input is shown (reduced security; see Section 6).
-
 The `status_url` field is **optional**. If present, it specifies a same-origin endpoint path that supports WebSocket or Server-Sent Events for push notifications (see Appendix B and C). If absent, the browser uses polling.
 
-The server generates the session_id and stores it along with the public_key.
+The server generates the session_id and stores it along with the public_key and algorithm.
 
-### A.2 Negotiate Endpoint
+### A.3 Negotiate Endpoint
 
 Called by the companion application after the user completes their operation.
 
@@ -1756,7 +1944,7 @@ Content-Type: application/json
 
 {
   "status": "negotiated",
-  "pairing_code": "K7M2"        // Present only when enabled in initialize response
+  "pairing_code": "K7M2"        // Present only when enabled in handshake response
 }
 ```
 
@@ -1786,31 +1974,22 @@ Content-Type: application/json
 }
 ```
 
-**Response (already negotiated - multi-negotiation detection):**
+**Response (compromised - multi-negotiation detection):**
+
+When a successful negotiation has already occurred for this session, the server MUST return:
 ```json
 HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
-  "status": "warning",
-  "warning": "already_negotiated",
-  "message": "Another device already performed this operation. Your environment may be compromised.",
-  "pairing_code": "X9Y2"        // Still provided so user can complete if they choose
+  "status": "compromised",
+  "message": "Another device already completed negotiation for this session. Your environment may be compromised."
 }
 ```
 
-Services MAY choose to block rather than warn on multi-negotiation. The response format for blocking:
-```json
-HTTP/1.1 409 Conflict
-Content-Type: application/json
+The response intentionally omits `pairing_code`. Without the pairing code, this negotiator cannot complete the flow. The companion application MUST warn the user that the environment is compromised and advise them to start a new session from a secure browser.
 
-{
-  "error": "already_negotiated",
-  "error_description": "Another device already performed this operation for this session"
-}
-```
-
-### A.3 Complete Endpoint
+### A.4 Complete Endpoint
 
 Called by the browser to retrieve the result. The browser proves ownership by signing the request.
 
@@ -1885,7 +2064,8 @@ Content-Type: application/json
 
 {
   "status": "complete",
-  "result": { ... }
+  "result": { ... },
+  "compromised": false              // Optional; true if multi-negotiation detected
 }
 ```
 
@@ -1899,9 +2079,14 @@ Set-Cookie: session=abc123; HttpOnly; Secure; SameSite=Strict
 
 {
   "status": "complete",
-  "redirect_url": "/dashboard"
+  "redirect_url": "/dashboard",
+  "compromised": false              // Optional; true if multi-negotiation detected
 }
 ```
+
+**Cookie mode and first-party status:** Because the complete endpoint is same-origin with the web page (enforced by the API), cookies set via `Set-Cookie` headers are first-party cookies. Third-party cookie restrictions do not affect this flow. The user agent processes these headers using standard browser cookie handling. Servers SHOULD use appropriate cookie attributes (`Secure`, `HttpOnly`, `SameSite`) per their security requirements.
+
+**The `compromised` field:** When present and set to `true`, this indicates that multiple devices attempted to negotiate for this session (see Section 5.7). The session completed successfully—the legitimate user entered the correct pairing code—but the QR code was intercepted by another device. The user agent MUST inform the user of this condition; the user should review their security and consider whether to trust the session.
 
 ---
 
