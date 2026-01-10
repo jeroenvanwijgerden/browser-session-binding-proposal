@@ -10,7 +10,7 @@
 
 **Disclosure:** The protocol design and core ideas are the author's original work. Large language models were used to identify edge cases, stress-test the security model, create a proof of concept, and draft this document for a standards audience. The author reviewed and lightly edited the resulting text.
 
-The author is a software engineer, not a security researcher. The protocol design reflects engineering judgment about secure system composition; specific parameter recommendations (entropy requirements, pairing code lengths, token lifetimes) are based on common practice and should be validated by domain experts.
+The author is a software engineer, not a security or UX expert. The protocol design reflects engineering judgment about secure system composition; specific parameter recommendations (entropy requirements, pairing code lengths, token lifetimes) are based on common practice and should be validated by domain experts.
 
 This disclosure is provided in the interest of transparency.
 
@@ -24,7 +24,7 @@ The protocol is agnostic to what is being bound. Authentication is one use case;
 
 The protocol is designed to be implementable by any service without platform vendor permission or specialized expertise, and without the need for a proprietary companion application. By providing simple, well-defined infrastructure, this proposal democratizes access to secure cross-device operations; any service that can implement four HTTPS endpoints can participate.
 
-A proof of concept demonstrating this proposal—including browser extensions for Chrome and Firefox, a service with protocol endpoints, and a companion app simulator—is available at https://github.com/AmnesiaBeing/browser-cross-device-auth-proposal/tree/main/proof-of-concept.
+A proof of concept demonstrating this proposal—including browser extensions for Chrome and Firefox, a service with protocol endpoints, and a companion app simulator—is available at [redacted for now].
 
 ---
 
@@ -1739,7 +1739,7 @@ An audited, open-source browser extension—reviewed by security researchers and
 3. Companion apps (password managers, authenticators) add protocol support
 4. Demonstrated ecosystem viability increases pressure for native browser implementation
 
-A proof of concept extension demonstrating this approach exists: https://github.com/AmnesiaBeing/browser-cross-device-auth-proposal/tree/main/proof-of-concept
+A proof of concept extension demonstrating this approach exists: [redacted, for now]
 
 Notably, the proof of concept uses passkeys (WebAuthn) for the companion app's authentication to the service—demonstrating that this protocol complements rather than competes with passkeys. The protocol provides the secure cross-device binding layer; passkeys provide the authentication. Together, they enable passkey-based authentication through any compliant app, not just platform-integrated ones.
 

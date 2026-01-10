@@ -114,11 +114,6 @@ The normal flow described in "Demo Flow" above.
 2. When you load a session, you can choose which identity to authenticate as
 3. The passkey table shows all registered credentials
 
-### Multiple Concurrent Flows
-1. Complete a flow, then click "Start New Flow" in the companion app
-2. The history section shows all completed negotiations
-3. Useful for demoing multiple logins in sequence
-
 ## Directory Structure
 
 ```
