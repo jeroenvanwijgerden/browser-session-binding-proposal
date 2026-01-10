@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      padding: 16px;
+      font-family: system-ui, sans-serif;
+      font-size: 14px;
+    }
+    .origin {
+      background: #e8f4fd;
+      border: 1px solid #1976d2;
+      border-radius: 4px;
+      padding: 8px;
+      margin-bottom: 16px;
+      word-break: break-all;
+      font-weight: bold;
+    }
+    .section {
+      margin-bottom: 16px;
+    }
+    .label {
+      font-size: 12px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    .value {
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 8px;
+      font-family: monospace;
+      font-size: 12px;
+      word-break: break-all;
+      user-select: all;
+    }
+    .value.copyable {
+      cursor: pointer;
+    }
+    .value.copyable:hover {
+      background: #e8e8e8;
+    }
+    .value.copied {
+      background: #e8f5e9;
+      border-color: #4caf50;
+    }
+    .input-group {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    input[type="text"] {
+      flex: 1;
+      padding: 8px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 16px;
+      text-align: center;
+      letter-spacing: 4px;
+    }
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .primary {
+      background: #1976d2;
+      color: white;
+    }
+    .primary:hover {
+      background: #1565c0;
+    }
+    .secondary {
+      background: #f5f5f5;
+      border: 1px solid #ddd;
+    }
+    .buttons {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+    .instructions {
+      background: #fff3e0;
+      border: 1px solid #ff9800;
+      border-radius: 4px;
+      padding: 8px;
+      margin-bottom: 16px;
+      font-size: 12px;
+    }
+    .enable-section {
+      text-align: center;
+      padding: 20px 0;
+    }
+    .enable-section p {
+      color: #666;
+      margin-bottom: 16px;
+    }
+    .status-badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-bottom: 16px;
+    }
+    .status-enabled {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    h3 {
+      margin: 0 0 8px 0;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <!-- No active ceremony -->
+  <div id="no-ceremony">
+    <div class="enable-section">
+      <span class="status-badge status-enabled">Ready</span>
+      <p>No active ceremony. Click "Login with OOB" on a page to start.</p>
+    </div>
+  </div>
+
+  <!-- Active ceremony -->
+  <div id="ceremony" style="display: none;">
+    <div class="section">
+      <div class="label">Origin</div>
+      <div class="origin" id="origin"></div>
+    </div>
+
+    <div class="instructions">
+      Copy the session info below into your companion app, then enter the pairing code shown by the app.
+    </div>
+
+    <div class="section">
+      <div class="label">Session Info (click to copy)</div>
+      <div class="value copyable" id="session-info"></div>
+    </div>
+
+    <div class="input-group">
+      <input type="text" id="pairing-code" placeholder="Pairing code" maxlength="6">
+    </div>
+
+    <div class="buttons">
+      <button class="secondary" id="cancel-btn">Cancel</button>
+      <button class="primary" id="complete-btn">Complete</button>
+    </div>
+
+    <div id="status" style="margin-top: 12px; font-size: 12px; color: #666;"></div>
+  </div>
+
+  <script src="sidepanel.js"></script>
+</body>
+</html>

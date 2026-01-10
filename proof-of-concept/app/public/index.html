@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Companion App - OOB PoC</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 500px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+    h1 { color: #333; }
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    .card h2 {
+      margin-top: 0;
+      font-size: 18px;
+    }
+    input[type="text"], select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      margin: 8px 0;
+      box-sizing: border-box;
+    }
+    button {
+      background: #1976d2;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 4px;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+    button:hover { background: #1565c0; }
+    button.secondary {
+      background: #757575;
+    }
+    button.secondary:hover { background: #616161; }
+    .status {
+      margin-top: 12px;
+      padding: 10px;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    .status.success {
+      background: #e8f5e9;
+      color: #2e7d32;
+    }
+    .status.error {
+      background: #ffebee;
+      color: #c62828;
+    }
+    .status.warning {
+      background: #fff3e0;
+      color: #e65100;
+    }
+    .pairing-code {
+      font-size: 48px;
+      font-weight: bold;
+      text-align: center;
+      padding: 20px;
+      background: #e3f2fd;
+      border-radius: 8px;
+      letter-spacing: 16px;
+      margin: 16px 0;
+    }
+    .pairing-code.small {
+      font-size: 24px;
+      padding: 10px;
+      letter-spacing: 8px;
+    }
+    .origin {
+      background: #f5f5f5;
+      padding: 8px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 14px;
+      margin: 8px 0;
+    }
+    #negotiate-section, #result-section {
+      display: none;
+    }
+    .info {
+      background: #e3f2fd;
+      border: 1px solid #1976d2;
+      border-radius: 4px;
+      padding: 12px;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+    .identity-select {
+      margin: 12px 0;
+    }
+    .identity-select label {
+      display: block;
+      font-size: 13px;
+      color: #666;
+      margin-bottom: 4px;
+    }
+    .history-entry {
+      border: 1px solid #c8e6c9;
+      background: #f1f8e9;
+      border-radius: 8px;
+      padding: 12px;
+      margin: 12px 0;
+      font-size: 13px;
+    }
+    .history-entry.warning {
+      border-color: #ffe0b2;
+      background: #fff8e1;
+    }
+    .history-entry .time {
+      color: #666;
+      font-size: 11px;
+    }
+    .history-entry .details {
+      margin-top: 8px;
+    }
+    #history {
+      margin-top: 20px;
+    }
+    #history h2 {
+      font-size: 16px;
+      color: #666;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 16px;
+      font-size: 13px;
+    }
+    th, td {
+      text-align: left;
+      padding: 8px;
+      border-bottom: 1px solid #ddd;
+    }
+    th {
+      background: #f5f5f5;
+      font-weight: 600;
+    }
+    .empty-message {
+      color: #666;
+      font-size: 13px;
+      font-style: italic;
+      margin-bottom: 16px;
+    }
+    .register-form {
+      margin-top: 16px;
+      padding-top: 16px;
+      border-top: 1px solid #eee;
+    }
+    hr {
+      border: none;
+      border-top: 1px solid #ddd;
+      margin: 24px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>Companion App</h1>
+  <p>This simulates a companion app (like a phone) for the OOB binding protocol.</p>
+
+  <div class="info">
+    Passkeys are stored in memory only. Refresh the page to clear.
+  </div>
+
+  <!-- Registration -->
+  <div class="card">
+    <h2>Registered Passkeys</h2>
+    <table id="passkey-table" style="display: none;">
+      <thead>
+        <tr>
+          <th>Origin</th>
+          <th>Username</th>
+        </tr>
+      </thead>
+      <tbody id="passkey-table-body">
+      </tbody>
+    </table>
+    <div id="no-passkeys" class="empty-message">No passkeys registered yet.</div>
+    <div class="register-form">
+      <input type="text" id="register-service-url" placeholder="Service URL (e.g. http://localhost:3000)" value="http://localhost:3000">
+      <input type="text" id="username" placeholder="Username">
+      <button id="register-btn">Register Passkey</button>
+    </div>
+    <div id="register-status"></div>
+  </div>
+
+  <hr>
+
+  <!-- Session Input -->
+  <div class="card">
+    <h2>1. Paste Session Info</h2>
+    <input type="text" id="session-info" placeholder='Paste session JSON from extension'>
+    <button id="parse-btn" class="secondary">Load Session</button>
+    <div id="parse-status"></div>
+  </div>
+
+  <!-- Negotiate -->
+  <div class="card" id="negotiate-section">
+    <h2>2. Login</h2>
+    <p>Service origin:</p>
+    <div class="origin" id="origin"></div>
+    <div class="identity-select">
+      <label for="identity-select">Authenticate as:</label>
+      <select id="identity-select"></select>
+    </div>
+    <button id="negotiate-btn">Authenticate & Negotiate</button>
+    <div id="negotiate-status"></div>
+  </div>
+
+  <!-- Result -->
+  <div class="card" id="result-section">
+    <h2>3. Pairing Code</h2>
+    <p>Enter this code in your browser:</p>
+    <div class="pairing-code" id="pairing-code"></div>
+    <button id="new-flow-btn" class="secondary">Start New Flow</button>
+  </div>
+
+  <!-- History -->
+  <div id="history" style="display: none;">
+    <h2>History</h2>
+    <div id="history-entries"></div>
+  </div>
+
+  <script>
+    // ==========================================================================
+    // Companion App for OOB Session Binding Protocol
+    //
+    // This app simulates what a mobile authenticator app would do:
+    // 1. Store passkeys (credentials) for various services
+    // 2. Receive session info from browser extension (via copy-paste in this PoC)
+    // 3. Authenticate to the service using a stored passkey
+    // 4. Display pairing code for user to enter in browser
+    //
+    // The WebAuthn code below implements a software authenticator. In a real
+    // app, this would use the device's secure enclave or hardware key.
+    // ==========================================================================
+
+    // In-memory passkey storage: serviceOrigin -> Map<username, passkey>
+    // Each passkey contains { privateKey, publicKey, credentialId, counter }
+    const storedPasskeys = new Map();
+
+    let currentSession = null;  // { negotiateUrl, sessionId, origin }
+    let flowCount = 0;
+
+    function getServiceOrigin(serviceUrl) {
+      try {
+        return new URL(serviceUrl).origin;
+      } catch {
+        return serviceUrl;
+      }
+    }
+
+    // Get or create passkey map for a service
+    function getPasskeysForService(origin) {
+      if (!storedPasskeys.has(origin)) {
+        storedPasskeys.set(origin, new Map());
+      }
+      return storedPasskeys.get(origin);
+    }
+
+    // Add a row to the passkey table
+    function addPasskeyToTable(origin, username) {
+      document.getElementById('passkey-table').style.display = '';
+      document.getElementById('no-passkeys').style.display = 'none';
+      const tbody = document.getElementById('passkey-table-body');
+      const row = document.createElement('tr');
+      row.innerHTML = `<td>${origin}</td><td>${username}</td>`;
+      tbody.appendChild(row);
+    }
+
+    // Add entry to history
+    function addToHistory(type, details, isWarning = false) {
+      const historySection = document.getElementById('history');
+      const historyEntries = document.getElementById('history-entries');
+      historySection.style.display = 'block';
+
+      const entry = document.createElement('div');
+      entry.className = 'history-entry' + (isWarning ? ' warning' : '');
+
+      const time = new Date().toLocaleTimeString();
+      entry.innerHTML = `
+        <div class="time">${time}</div>
+        <div><strong>${type}</strong></div>
+        <div class="details">${details}</div>
+      `;
+
+      historyEntries.insertBefore(entry, historyEntries.firstChild);
+    }
+
+    // Reset for new flow (global for onclick handler)
+    window.resetForNewFlow = function() {
+      document.getElementById('session-info').value = '';
+      document.getElementById('parse-status').textContent = '';
+      document.getElementById('parse-status').className = '';
+      document.getElementById('negotiate-status').textContent = '';
+      document.getElementById('negotiate-status').className = '';
+      document.getElementById('negotiate-section').style.display = 'none';
+      document.getElementById('result-section').style.display = 'none';
+      currentSession = null;
+    }
+
+    // ==========================================================================
+    // WebAuthn Encoding Helpers
+    // ==========================================================================
+
+    // Convert ArrayBuffer to base64url string (used in WebAuthn responses)
+    function bufferToBase64url(buffer) {
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.length; i++) {
+        binary += String.fromCharCode(bytes[i]);
+      }
+      return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+    }
+
+    // Convert base64url string to ArrayBuffer
+    function base64urlToBuffer(base64url) {
+      const base64 = base64url.replace(/-/g, '+').replace(/_/g, '/');
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+
+    function generateCredentialId() {
+      const bytes = new Uint8Array(32);
+      crypto.getRandomValues(bytes);
+      return bufferToBase64url(bytes);
+    }
+
+    // ==========================================================================
+    // WebAuthn Data Structure Builders
+    //
+    // These functions build the binary structures required by the WebAuthn spec.
+    // Real authenticators do this in hardware; we do it in software.
+    // ==========================================================================
+
+    // Build authenticatorData - the core structure signed by the authenticator
+    // See: https://www.w3.org/TR/webauthn-2/#authenticator-data
+    async function buildAuthenticatorData(rpId, flags, counter, attestedCredentialData = null) {
+      // rpIdHash (32 bytes)
+      const rpIdHash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(rpId));
+
+      // flags (1 byte): UP=0x01, UV=0x04, AT=0x40, ED=0x80
+      const flagsByte = new Uint8Array([flags]);
+
+      // signCount (4 bytes, big-endian)
+      const signCount = new Uint8Array(4);
+      signCount[0] = (counter >> 24) & 0xff;
+      signCount[1] = (counter >> 16) & 0xff;
+      signCount[2] = (counter >> 8) & 0xff;
+      signCount[3] = counter & 0xff;
+
+      if (attestedCredentialData) {
+        // Registration: include attested credential data
+        const combined = new Uint8Array(32 + 1 + 4 + attestedCredentialData.length);
+        combined.set(new Uint8Array(rpIdHash), 0);
+        combined.set(flagsByte, 32);
+        combined.set(signCount, 33);
+        combined.set(attestedCredentialData, 37);
+        return combined;
+      } else {
+        // Authentication: no attested credential data
+        const combined = new Uint8Array(32 + 1 + 4);
+        combined.set(new Uint8Array(rpIdHash), 0);
+        combined.set(flagsByte, 32);
+        combined.set(signCount, 33);
+        return combined;
+      }
+    }
+
+    // Build COSE public key in CBOR format (EC2, P-256)
+    // See: https://www.rfc-editor.org/rfc/rfc8152#section-13.1
+    function buildCosePublicKey(x, y) {
+      // Minimal CBOR encoding of COSE_Key for EC2 P-256
+      // {1: 2, 3: -7, -1: 1, -2: x, -3: y}
+      const xBytes = new Uint8Array(x);
+      const yBytes = new Uint8Array(y);
+
+      // CBOR map with 5 items
+      const parts = [
+        0xa5, // map(5)
+        0x01, 0x02, // 1: 2 (kty: EC2)
+        0x03, 0x26, // 3: -7 (alg: ES256)
+        0x20, 0x01, // -1: 1 (crv: P-256)
+        0x21, 0x58, 0x20, ...xBytes, // -2: x (32 bytes)
+        0x22, 0x58, 0x20, ...yBytes  // -3: y (32 bytes)
+      ];
+      return new Uint8Array(parts);
+    }
+
+    // Build attested credential data (included in authenticatorData during registration)
+    function buildAttestedCredentialData(credentialId, cosePublicKey) {
+      const credIdBytes = new Uint8Array(base64urlToBuffer(credentialId));
+
+      // AAGUID (16 bytes of zeros for software authenticator)
+      const aaguid = new Uint8Array(16);
+
+      // Credential ID length (2 bytes, big-endian)
+      const credIdLen = new Uint8Array(2);
+      credIdLen[0] = (credIdBytes.length >> 8) & 0xff;
+      credIdLen[1] = credIdBytes.length & 0xff;
+
+      const combined = new Uint8Array(16 + 2 + credIdBytes.length + cosePublicKey.length);
+      combined.set(aaguid, 0);
+      combined.set(credIdLen, 16);
+      combined.set(credIdBytes, 18);
+      combined.set(cosePublicKey, 18 + credIdBytes.length);
+      return combined;
+    }
+
+    // ==========================================================================
+    // Passkey Registration
+    // ==========================================================================
+
+    document.getElementById('register-btn').addEventListener('click', async () => {
+      const username = document.getElementById('username').value.trim();
+      const serviceUrl = document.getElementById('register-service-url').value.trim();
+      const status = document.getElementById('register-status');
+
+      if (!serviceUrl) {
+        status.className = 'status error';
+        status.textContent = 'Please enter a service URL';
+        return;
+      }
+
+      const serviceOrigin = getServiceOrigin(serviceUrl);
+
+      if (!username) {
+        status.className = 'status error';
+        status.textContent = 'Please enter a username';
+        return;
+      }
+
+      try {
+        // Get registration options from service
+        const optionsRes = await fetch(`${serviceUrl}/passkey/register/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username })
+        });
+
+        if (!optionsRes.ok) {
+          const err = await optionsRes.json();
+          throw new Error(err.error || 'Registration failed');
+        }
+
+        const options = await optionsRes.json();
+
+        // Generate key pair (P-256 for ES256)
+        const keyPair = await crypto.subtle.generateKey(
+          { name: 'ECDSA', namedCurve: 'P-256' },
+          true,
+          ['sign', 'verify']
+        );
+
+        // Export public key to get x, y coordinates
+        const publicKeyJwk = await crypto.subtle.exportKey('jwk', keyPair.publicKey);
+        const x = base64urlToBuffer(publicKeyJwk.x);
+        const y = base64urlToBuffer(publicKeyJwk.y);
+
+        // Generate credential ID
+        const credentialId = generateCredentialId();
+
+        // Build COSE public key
+        const cosePublicKey = buildCosePublicKey(x, y);
+
+        // Build attested credential data
+        const attestedCredentialData = buildAttestedCredentialData(credentialId, cosePublicKey);
+
+        // Build authenticatorData (flags: UP=1, UV=1, AT=1 = 0x45)
+        const authenticatorData = await buildAuthenticatorData('localhost', 0x45, 0, attestedCredentialData);
+
+        // Build clientDataJSON
+        const clientData = {
+          type: 'webauthn.create',
+          challenge: options.challenge,
+          origin: window.location.origin,
+          crossOrigin: false
+        };
+        const clientDataJSON = new TextEncoder().encode(JSON.stringify(clientData));
+
+        // Build attestation object (none attestation)
+        // CBOR: {"fmt": "none", "attStmt": {}, "authData": authenticatorData}
+        const attestationObject = buildAttestationObject(authenticatorData);
+
+        // Store passkey in memory under service origin
+        const servicePasskeys = getPasskeysForService(serviceOrigin);
+        servicePasskeys.set(username, {
+          privateKey: keyPair.privateKey,
+          publicKey: keyPair.publicKey,
+          credentialId,
+          counter: 0
+        });
+
+        // Build response in simplewebauthn format
+        const attestationResponse = {
+          id: credentialId,
+          rawId: credentialId,
+          type: 'public-key',
+          response: {
+            clientDataJSON: bufferToBase64url(clientDataJSON),
+            attestationObject: bufferToBase64url(attestationObject)
+          },
+          clientExtensionResults: {},
+          authenticatorAttachment: 'platform'
+        };
+
+        // Send to service
+        const finishRes = await fetch(`${serviceUrl}/passkey/register/finish`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            username,
+            attestationResponse
+          })
+        });
+
+        if (!finishRes.ok) {
+          const err = await finishRes.json();
+          throw new Error(err.error || err.detail || 'Registration verification failed');
+        }
+
+        addPasskeyToTable(serviceOrigin, username);
+        document.getElementById('username').value = '';
+        status.className = '';
+        status.textContent = '';
+
+      } catch (e) {
+        status.className = 'status error';
+        status.textContent = e.message;
+      }
+    });
+
+    // Build attestation object (CBOR encoding, "none" attestation format)
+    function buildAttestationObject(authData) {
+      // {"fmt": "none", "attStmt": {}, "authData": authData}
+      // CBOR encoding:
+      // a3                      -- map(3)
+      //   63 666d74             -- text(3) "fmt"
+      //   64 6e6f6e65           -- text(4) "none"
+      //   67 61747453746d74     -- text(7) "attStmt"
+      //   a0                    -- map(0) {}
+      //   68 61757468 44617461  -- text(8) "authData"
+      //   59 XXXX ...           -- bytes(XXXX) authData
+
+      const header = new Uint8Array([
+        0xa3, // map(3)
+        0x63, 0x66, 0x6d, 0x74, // "fmt"
+        0x64, 0x6e, 0x6f, 0x6e, 0x65, // "none"
+        0x67, 0x61, 0x74, 0x74, 0x53, 0x74, 0x6d, 0x74, // "attStmt"
+        0xa0, // {}
+        0x68, 0x61, 0x75, 0x74, 0x68, 0x44, 0x61, 0x74, 0x61, // "authData"
+      ]);
+
+      // Bytes header for authData
+      let bytesHeader;
+      if (authData.length < 256) {
+        bytesHeader = new Uint8Array([0x58, authData.length]);
+      } else {
+        bytesHeader = new Uint8Array([0x59, (authData.length >> 8) & 0xff, authData.length & 0xff]);
+      }
+
+      const result = new Uint8Array(header.length + bytesHeader.length + authData.length);
+      result.set(header, 0);
+      result.set(bytesHeader, header.length);
+      result.set(authData, header.length + bytesHeader.length);
+      return result;
+    }
+
+    // ==========================================================================
+    // OOB Protocol Flow
+    // ==========================================================================
+
+    // Step 1: Parse session info from browser extension
+    document.getElementById('parse-btn').addEventListener('click', () => {
+      const sessionInfoStr = document.getElementById('session-info').value.trim();
+      const status = document.getElementById('parse-status');
+
+      if (!sessionInfoStr) {
+        status.className = 'status error';
+        status.textContent = 'Please paste session info from extension';
+        return;
+      }
+
+      let parsed;
+      try {
+        parsed = JSON.parse(sessionInfoStr);
+      } catch (e) {
+        status.className = 'status error';
+        status.textContent = 'Invalid JSON. Copy the session info from the extension.';
+        return;
+      }
+
+      if (!parsed.url || !parsed.session) {
+        status.className = 'status error';
+        status.textContent = 'Invalid session info. Must contain "url" and "session".';
+        return;
+      }
+
+      try {
+        const url = new URL(parsed.url);
+        currentSession = {
+          negotiateUrl: parsed.url,
+          sessionId: parsed.session,
+          origin: url.origin
+        };
+
+        document.getElementById('origin').textContent = currentSession.origin;
+
+        // Populate identity selector
+        const select = document.getElementById('identity-select');
+        select.innerHTML = '';
+
+        const servicePasskeys = storedPasskeys.get(currentSession.origin);
+        if (!servicePasskeys || servicePasskeys.size === 0) {
+          status.className = 'status error';
+          status.textContent = 'No passkeys registered for this service. Register one first.';
+          document.getElementById('negotiate-section').style.display = 'none';
+          return;
+        }
+
+        for (const username of servicePasskeys.keys()) {
+          const option = document.createElement('option');
+          option.value = username;
+          option.textContent = username;
+          select.appendChild(option);
+        }
+
+        document.getElementById('negotiate-section').style.display = 'block';
+        document.getElementById('result-section').style.display = 'none';
+
+        status.className = 'status success';
+        status.textContent = `Session loaded. ${servicePasskeys.size} identity(s) available.`;
+      } catch (e) {
+        status.className = 'status error';
+        status.textContent = 'Invalid URL';
+      }
+    });
+
+    // Step 2: Authenticate and negotiate - calls /bind/negotiate with passkey assertion
+    document.getElementById('negotiate-btn').addEventListener('click', async () => {
+      const status = document.getElementById('negotiate-status');
+
+      if (!currentSession) {
+        status.className = 'status error';
+        status.textContent = 'Please load a session first';
+        return;
+      }
+
+      const selectedUsername = document.getElementById('identity-select').value;
+      if (!selectedUsername) {
+        status.className = 'status error';
+        status.textContent = 'Please select an identity';
+        return;
+      }
+
+      const servicePasskeys = storedPasskeys.get(currentSession.origin);
+      const passkey = servicePasskeys?.get(selectedUsername);
+      if (!passkey) {
+        status.className = 'status error';
+        status.textContent = 'Passkey not found';
+        return;
+      }
+
+      try {
+        // Get authentication options from service
+        const optionsRes = await fetch(`${currentSession.origin}/passkey/auth/start`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username: selectedUsername })
+        });
+
+        if (!optionsRes.ok) {
+          throw new Error('Failed to get auth options');
+        }
+
+        const options = await optionsRes.json();
+
+        // Increment counter
+        passkey.counter++;
+
+        // Build authenticatorData (flags: UP=1, UV=1 = 0x05)
+        const authenticatorData = await buildAuthenticatorData('localhost', 0x05, passkey.counter);
+
+        // Build clientDataJSON
+        const clientData = {
+          type: 'webauthn.get',
+          challenge: options.challenge,
+          origin: window.location.origin,
+          crossOrigin: false
+        };
+        const clientDataJSON = new TextEncoder().encode(JSON.stringify(clientData));
+
+        // Hash clientDataJSON
+        const clientDataHash = await crypto.subtle.digest('SHA-256', clientDataJSON);
+
+        // Sign authenticatorData || clientDataHash
+        const signatureBase = new Uint8Array(authenticatorData.length + 32);
+        signatureBase.set(authenticatorData, 0);
+        signatureBase.set(new Uint8Array(clientDataHash), authenticatorData.length);
+
+        const signatureRaw = await crypto.subtle.sign(
+          { name: 'ECDSA', hash: 'SHA-256' },
+          passkey.privateKey,
+          signatureBase
+        );
+
+        // Convert signature from raw to DER format (required by WebAuthn)
+        const signature = rawToDer(new Uint8Array(signatureRaw));
+
+        // Build assertion response
+        const assertionResponse = {
+          id: passkey.credentialId,
+          rawId: passkey.credentialId,
+          type: 'public-key',
+          response: {
+            clientDataJSON: bufferToBase64url(clientDataJSON),
+            authenticatorData: bufferToBase64url(authenticatorData),
+            signature: bufferToBase64url(signature)
+          },
+          clientExtensionResults: {},
+          authenticatorAttachment: 'platform'
+        };
+
+        // Negotiate with service
+        const negotiateRes = await fetch(currentSession.negotiateUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: currentSession.sessionId,
+            username: selectedUsername,
+            assertionResponse
+          })
+        });
+
+        const result = await negotiateRes.json();
+
+        if (result.status === 'compromised') {
+          status.className = 'status warning';
+          status.innerHTML = 'WARNING: ' + result.message + '<br><button class="secondary" onclick="resetForNewFlow()">Start New Flow</button>';
+          addToHistory('COMPROMISED', `Session was already negotiated by another device!<br>User: ${selectedUsername}`, true);
+          return;
+        }
+
+        if (result.status !== 'negotiated') {
+          throw new Error(result.error || result.detail || 'Negotiation failed');
+        }
+
+        // Show pairing code
+        document.getElementById('result-section').style.display = 'block';
+        document.getElementById('pairing-code').textContent = result.pairing_code;
+
+        status.className = 'status success';
+        status.textContent = 'Negotiation successful! Enter the pairing code in your browser.';
+
+        flowCount++;
+        addToHistory(`Flow #${flowCount} - Negotiated`,
+          `User: ${selectedUsername}<br>Service: ${currentSession.origin}<br>Pairing Code: ${result.pairing_code}`);
+
+      } catch (e) {
+        status.className = 'status error';
+        status.textContent = e.message;
+      }
+    });
+
+    // Step 3: User sees pairing code and enters it in browser extension
+
+    document.getElementById('new-flow-btn').addEventListener('click', () => {
+      resetForNewFlow();
+    });
+
+    // ==========================================================================
+    // ECDSA Signature Conversion
+    // ==========================================================================
+
+    // WebAuthn requires DER-encoded signatures, but WebCrypto produces raw (r||s)
+    // This converts between the two formats
+    function rawToDer(raw) {
+      const r = raw.slice(0, 32);
+      const s = raw.slice(32, 64);
+
+      function toDerInt(bytes) {
+        // Remove leading zeros but keep one if high bit set
+        let start = 0;
+        while (start < bytes.length - 1 && bytes[start] === 0) start++;
+        const trimmed = bytes.slice(start);
+
+        // Add leading zero if high bit is set (to keep it positive)
+        if (trimmed[0] & 0x80) {
+          const padded = new Uint8Array(trimmed.length + 1);
+          padded[0] = 0;
+          padded.set(trimmed, 1);
+          return padded;
+        }
+        return trimmed;
+      }
+
+      const rDer = toDerInt(r);
+      const sDer = toDerInt(s);
+
+      const seq = new Uint8Array(2 + 2 + rDer.length + 2 + sDer.length);
+      seq[0] = 0x30; // SEQUENCE
+      seq[1] = 2 + rDer.length + 2 + sDer.length;
+      seq[2] = 0x02; // INTEGER
+      seq[3] = rDer.length;
+      seq.set(rDer, 4);
+      seq[4 + rDer.length] = 0x02; // INTEGER
+      seq[5 + rDer.length] = sDer.length;
+      seq.set(sDer, 6 + rDer.length);
+
+      return seq;
+    }
+  </script>
+</body>
+</html>

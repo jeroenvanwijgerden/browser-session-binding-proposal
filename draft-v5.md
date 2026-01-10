@@ -1,6 +1,6 @@
 # Secure and Sovereign Out-of-Band Session Binding for Web Browsers
 
-**A Protocol Proposal for W3C WICG Discussion**
+**A Protocol Proposal for Discussion**
 
 **Author:** Jeroen van Wijgerden
 
@@ -8,7 +8,7 @@
 
 **Version:** 0.5 (Draft for public comment)
 
-**Disclosure:** The protocol design and core ideas are the author's original work. Large language models were used to identify edge cases, stress-test the security model, and draft this document for a standards audience. The author reviewed and lightly edited the resulting text.
+**Disclosure:** The protocol design and core ideas are the author's original work. Large language models were used to identify edge cases, stress-test the security model, create a proof of concept, and draft this document for a standards audience. The author reviewed and lightly edited the resulting text.
 
 The author is a software engineer, not a security researcher. The protocol design reflects engineering judgment about secure system composition; specific parameter recommendations (entropy requirements, pairing code lengths, token lifetimes) are based on common practice and should be validated by domain experts.
 
@@ -23,6 +23,8 @@ This proposal describes browser-native infrastructure for securely binding out-o
 The protocol is agnostic to what is being bound. Authentication is one use case; others are payments, document signing, and access grants. The protocol provides the secure binding layer; the semantics of what is bound are determined by the service and companion application. This is infrastructure, not an authentication protocol.
 
 The protocol is designed to be implementable by any service without platform vendor permission or specialized expertise, and without the need for a proprietary companion application. By providing simple, well-defined infrastructure, this proposal democratizes access to secure cross-device operations; any service that can implement four HTTPS endpoints can participate.
+
+A proof of concept demonstrating this proposal—including browser extensions for Chrome and Firefox, a service with protocol endpoints, and a companion app simulator—is available at https://github.com/AmnesiaBeing/browser-cross-device-auth-proposal/tree/main/proof-of-concept.
 
 ---
 
@@ -107,8 +109,9 @@ The protocol is designed to be implementable by any service without platform ven
   - [17.1 The Passkey Landscape](#171-the-passkey-landscape)
   - [17.2 Incentive Structures](#172-incentive-structures)
   - [17.3 A Regulatory Path](#173-a-regulatory-path)
-  - [17.4 Other Adoption Paths](#174-other-adoption-paths)
-  - [17.5 The Chicken-and-Egg Problem](#175-the-chicken-and-egg-problem)
+  - [17.4 Browser Extension as Intermediate Step](#174-browser-extension-as-intermediate-step)
+  - [17.5 Other Adoption Paths](#175-other-adoption-paths)
+  - [17.6 The Chicken-and-Egg Problem](#176-the-chicken-and-egg-problem)
 - [18. Conclusion](#18-conclusion)
 - [License](#license)
 - [References](#references)
@@ -1640,6 +1643,22 @@ A polyfill would still be valuable for:
 
 But the security guarantees require native browser implementation. The polyfill would be a development and demonstration tool, not a production security mechanism.
 
+### Q: If a browser extension can provide the full security guarantees, why should this become part of the browser spec?
+
+A well-designed browser extension can indeed provide the same security properties as a native implementation (see Section 17.4). However, native browser implementation remains important for several reasons:
+
+1. **Reach.** Extensions require explicit installation. Native support reaches all users by default. Security features that require opt-in installation remain niche; those built into the platform become ubiquitous.
+
+2. **Trust.** Users must evaluate whether to trust an extension—who authored it, whether it's been audited, whether updates might introduce vulnerabilities. Native browser features inherit the trust users already place in their browser. The extension approach shifts security evaluation burden to users who are poorly equipped for it.
+
+3. **Maintenance.** Extensions can be abandoned, sold to malicious actors, or fall out of sync with browser updates. Native implementations are maintained as part of the browser's security surface.
+
+4. **Discoverability.** Services cannot reliably detect whether users have the capability. With native support, feature detection is straightforward and services can confidently offer the authentication method.
+
+5. **Legitimacy.** A standardized browser API signals that the capability is sanctioned and stable. Services and companion apps are more likely to invest in supporting a W3C standard than a third-party extension.
+
+The extension serves as a proving ground—demonstrating viability, building ecosystem momentum, and providing immediate value to security-conscious users. But the end goal remains native browser support, where the security benefits become available to everyone without requiring individual action.
+
 ### Q: What if a browser, app, or service implements the protocol incorrectly?
 
 The same thing that happens today when browsers, apps, or services implement security incorrectly: security degrades.
@@ -1695,7 +1714,36 @@ The European Union's eIDAS 2.0 regulation is creating requirements for interoper
 
 A regulatory mandate requiring browsers to implement secure, open cross-device binding infrastructure would create adoption regardless of individual vendor incentives. The EU has demonstrated willingness to mandate browser changes (e.g., browser choice screens, DMA compliance). This proposal could fit within that regulatory framework.
 
-### 17.4 Other Adoption Paths
+### 17.4 Browser Extension as Intermediate Step
+
+Unlike a JavaScript polyfill (which cannot isolate the private key from the page context), a browser extension **can** provide the full security guarantees of this protocol:
+
+- The extension's background script holds the private key, completely isolated from page JavaScript
+- The extension provides trusted UI (popup or sidebar) that the page cannot manipulate
+- The extension injects `navigator.outOfBandBinding` into page context, making the API available
+
+Crucially, **services and companion apps do not need to know whether the browser API is provided by an extension or natively**. The protocol endpoints are identical. A service that implements the four endpoints works with both. A companion app that speaks the protocol works with both. The ecosystem can develop today.
+
+Websites can detect and offer the capability:
+
+```javascript
+if (navigator.outOfBandBinding) {
+  showOOBLoginButton();
+}
+```
+
+An audited, open-source browser extension—reviewed by security researchers and published through official extension stores—could serve as the bootstrap mechanism:
+
+1. Security-conscious users install the extension
+2. Services implement endpoints knowing some users can already use them
+3. Companion apps (password managers, authenticators) add protocol support
+4. Demonstrated ecosystem viability increases pressure for native browser implementation
+
+A proof of concept extension demonstrating this approach exists: https://github.com/AmnesiaBeing/browser-cross-device-auth-proposal/tree/main/proof-of-concept
+
+Notably, the proof of concept uses passkeys (WebAuthn) for the companion app's authentication to the service—demonstrating that this protocol complements rather than competes with passkeys. The protocol provides the secure cross-device binding layer; passkeys provide the authentication. Together, they enable passkey-based authentication through any compliant app, not just platform-integrated ones.
+
+### 17.5 Other Adoption Paths
 
 Regulatory mandate is not the only path:
 
@@ -1705,11 +1753,9 @@ Regulatory mandate is not the only path:
 
 - **Developer demand.** If enough services want this capability, browser vendors may respond to market demand.
 
-- **Polyfill demonstration.** A JavaScript polyfill (with reduced security guarantees) could demonstrate the UX and build ecosystem momentum before native implementation. See the polyfill FAQ in Section 15 for details on what a polyfill can and cannot provide.
-
 However, the regulatory path remains the most likely to succeed given the structural incentives involved.
 
-### 17.5 The Chicken-and-Egg Problem
+### 17.6 The Chicken-and-Egg Problem
 
 Adoption requires both services implementing endpoints and companion apps supporting the protocol. This classic chicken-and-egg problem can be addressed:
 

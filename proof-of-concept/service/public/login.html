@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Login - OOB PoC Service</title>
+  <style>
+    body {
+      font-family: system-ui, sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+    }
+    h1 { color: #333; }
+    .card {
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    button {
+      background: #1976d2;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 4px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    button:hover { background: #1565c0; }
+    #result {
+      margin-top: 20px;
+      padding: 20px;
+      background: #e8f5e9;
+      border-radius: 8px;
+      display: none;
+    }
+    #error {
+      margin-top: 20px;
+      padding: 20px;
+      background: #ffebee;
+      border-radius: 8px;
+      display: none;
+      color: #c62828;
+    }
+  </style>
+</head>
+<body>
+  <h1>OOB PoC Service</h1>
+
+  <div class="card">
+    <h2>Login with Companion App</h2>
+    <p>Click the button below to start the out-of-band login flow.</p>
+    <button id="login-btn">Login with OOB</button>
+  </div>
+
+  <div id="result">
+    <h2>Welcome!</h2>
+    <p>Hello, <strong id="username"></strong>!</p>
+    <p>You have successfully logged in using the out-of-band binding protocol.</p>
+  </div>
+
+  <div id="error">
+    <h2>Login Failed</h2>
+    <p id="error-message"></p>
+  </div>
+
+  <script>
+    // This demonstrates how a website uses the OOB binding API.
+    // The API is provided by the browser extension via navigator.outOfBandBinding.
+
+    document.getElementById('login-btn').addEventListener('click', async () => {
+      if (!navigator.outOfBandBinding) {
+        document.getElementById('error').style.display = 'block';
+        document.getElementById('error-message').textContent =
+          'Browser extension not installed. Please install the OOB Binding extension.';
+        return;
+      }
+
+      try {
+        const result = await navigator.outOfBandBinding.request({
+          handshakeEndpoint: '/bind/handshake',
+          initializeEndpoint: '/bind/initialize',
+          negotiateEndpoint: '/bind/negotiate',
+          completeEndpoint: '/bind/complete',
+          displayName: 'OOB PoC Service',
+          title: 'Sign in to OOB PoC Service'
+        });
+
+        if (result.status === 'success') {
+          document.getElementById('result').style.display = 'block';
+          document.getElementById('error').style.display = 'none';
+          document.getElementById('username').textContent = result.result.username;
+        } else {
+          document.getElementById('error').style.display = 'block';
+          document.getElementById('result').style.display = 'none';
+          document.getElementById('error-message').textContent =
+            result.errorMessage || result.status;
+        }
+      } catch (e) {
+        document.getElementById('error').style.display = 'block';
+        document.getElementById('result').style.display = 'none';
+        document.getElementById('error-message').textContent = e.message;
+      }
+    });
+  </script>
+</body>
+</html>
