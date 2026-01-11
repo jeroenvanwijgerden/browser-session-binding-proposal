@@ -8,7 +8,7 @@
 
 **Version:** 0.6 (Draft for public comment)
 
-**Disclosure:** The protocol design and core ideas are the author's original work. Large language models were used to identify edge cases, stress-test the security model, and create a proof of concept. Of the text in this document, the author personally wrote only this disclosure, the abstract, and the executive summary; the remainder was drafted by a large language model for a standards audience. TODO continue here.  and draft this document for a standards audience. The author reviewed all but edited only some of the generated text.
+**Disclosure:** The protocol design and core ideas are the author's original work. Large language models were used to identify edge cases, stress-test the security model, and create a proof of concept. Of the text in this document, the author personally wrote only this disclosure, the abstract, and the executive summary; the remainder was drafted by a large language model for a standards audience. The author reviewed all but edited only some of the generated text.
 
 The author is a software engineer, not a security or UX expert. The protocol design reflects engineering judgment about secure system composition; specific parameter recommendations (entropy requirements, pairing code lengths, token lifetimes) are based on common practice and should be validated by domain experts.
 
@@ -146,8 +146,8 @@ Any complying browser, app, and service can participate. For many applications r
   - [E.8 Proof of Concept](#e8-proof-of-concept)
 - [Appendix F: QR Code Capacity Analysis](#appendix-f-qr-code-capacity-analysis)
   - [F.1 Question](#f1-question)
-  - [F.2 Payload Components](#f2-payload-components)
-  - [F.3 Realistic Payload Sizes](#f3-realistic-payload-sizes)
+  - [F.2 Transfer Payload Components](#f2-transfer-payload-components)
+  - [F.3 Realistic Transfer Payload Sizes](#f3-realistic-transfer-payload-sizes)
   - [F.4 QR Code Capacity](#f4-qr-code-capacity)
   - [F.5 Display Considerations](#f5-display-considerations)
   - [F.6 Conclusion](#f6-conclusion)
@@ -336,9 +336,6 @@ dictionary BindingRequest {
   // Completion handling
   BindingCompletionMode completionMode = "object";
   unsigned long timeoutSeconds = 120;       // 10-600 seconds inclusive
-
-  // Data for companion application (included in transfer payload)
-  BufferSource payload;                     // Max 4096 bytes
 };
 
 dictionary BindingOptions {
@@ -398,7 +395,6 @@ Phishing resistance is server-controlled, not browser-enforced. A bank's authent
 | `title` | Max 128 characters |
 | `description` | Max 1024 characters |
 | `timeoutSeconds` | 10-600 inclusive |
-| `payload` | Max 4096 bytes |
 
 User agents MUST reject requests that exceed these limits.
 
@@ -525,7 +521,7 @@ The user agent MUST clearly distinguish between verified information (origin) an
 
 ### 4.5 Transfer Mechanisms
 
-The user agent must provide a way for the user to transfer session parameters (endpoint URLs, session ID, display name, payload) to the companion application. This proposal does not mandate a specific mechanism; implementations should support multiple options for flexibility and accessibility.
+The user agent must provide a way for the user to transfer session parameters (endpoint URL, session ID, display name) to the companion application. This proposal does not mandate a specific mechanism; implementations should support multiple options for flexibility and accessibility.
 
 **QR Code** is expected to be the primary mechanism for cross-device binding. The user agent displays a QR code; the companion application scans it with a camera. This is familiar, requires no pairing, and works across platforms.
 
@@ -551,8 +547,7 @@ To ensure interoperability between any compliant companion application and any c
   "version": 1,
   "url": "https://example.com/bind/negotiate",
   "session_id": "vK9xQ2mN7pR4wY6zA3bC8dE",
-  "name": "Example Service",
-  "payload": "eyJhbW91bnQiOiI0OS45OSIsImN1cnJlbmN5IjoiRVVSIn0"
+  "name": "Example Service"
 }
 ```
 
@@ -564,30 +559,12 @@ To ensure interoperability between any compliant companion application and any c
 | `url` | Yes | 512 chars | Full negotiate endpoint URL (origin + path). |
 | `session_id` | Yes | 64 chars | The session identifier from initialization (base64url encoded). |
 | `name` | Yes | 64 chars | Service display name. If the companion app does not recognize the URL, it MUST display this name along with an indication that the service is unknown. |
-| `payload` | No | 1024 chars | Service-specific data as base64-encoded JSON. This limit corresponds to approximately 768 bytes of raw data before base64 encoding. |
 
-**Total payload limit:** The entire JSON transfer payload (including all field names, values, and JSON syntax) MUST NOT exceed 1500 bytes when encoded as UTF-8. This ensures reliable scanning with QR code Version 12-15 at error correction level M.
-
-*Note:* The API allows service payloads up to 4096 bytes, but QR code capacity limits the transfer payload to approximately 768 bytes of service data. Services requiring larger payloads SHOULD use alternative transfer mechanisms (deep links, NFC) or redesign their payload to fit within QR constraints.
-
-**Field justification:** Every field in the transfer payload consumes scarce QR code capacity. Each field above is included because:
-- `version`: Required for future protocol evolution without breaking existing apps
-- `url`: Required for the app to know where to send the negotiate request
-- `session_id`: Required to identify the ceremony
-- `name`: Required for user confirmation, especially when the URL doesn't match a known service
-- `payload`: Optional; only included when the service needs to pass additional data
-
-**Payload encoding:** When present, the `payload` field MUST contain base64-encoded JSON. The companion application MUST first base64-decode the value, then parse the result as JSON. Note that this means service-provided data is encoded twice: first as JSON then base64 to produce the `payload` field value, then again as part of the outer JSON that is encoded into the QR code.
-
-**Example payload encoding chain:**
-1. Service wants to send: `{"amount":"49.99","currency":"EUR"}`
-2. JSON serialize → `{"amount":"49.99","currency":"EUR"}`
-3. Base64 encode → `eyJhbW91bnQiOiI0OS45OSIsImN1cnJlbmN5IjoiRVVSIn0`
-4. This string becomes the `payload` field value in the transfer JSON
+**Total payload limit:** The entire JSON transfer payload (including all field names, values, and JSON syntax) MUST NOT exceed 300 bytes when encoded as UTF-8. This ensures reliable scanning with QR code Version 10-12 at error correction level M.
 
 #### 4.5.2 QR Code Capacity
 
-Typical protocol payloads (110-150 bytes) fit comfortably in Version 5-10 QR codes. Even enterprise-scale URLs with maximum-length session IDs and service payloads (~290 bytes) fit within Version 15. A Version 10 QR code (57×57 modules) displayed at 4 pixels per module requires only 228×228 pixels—easily accommodated in browser UI and scannable by modern smartphone cameras. The 1500-byte payload limit (Section 4.5.1) ensures payloads remain within Version 12-15, well within the reliable scanning range.
+Typical transfer payloads (110-150 bytes) fit comfortably in Version 5-10 QR codes. Even enterprise-scale URLs with maximum-length session IDs (~200 bytes) fit within Version 10. A Version 10 QR code (57×57 modules) displayed at 4 pixels per module requires only 228×228 pixels—easily accommodated in browser UI and scannable by modern smartphone cameras.
 
 **Conclusion:** QR capacity is not a practical constraint for this protocol. See Appendix F for detailed capacity analysis.
 
@@ -716,7 +693,7 @@ The user agent, having completed the handshake:
 3. Sends an initialization request to the initialize endpoint with the public key
 4. Receives the session ID from the service
 5. Only after successful initialization, displays trusted UI with:
-   - Transfer mechanism(s) providing the negotiate endpoint URL, session ID, display name, and any service-provided payload
+   - Transfer mechanism(s) providing the negotiate endpoint URL, session ID, and display name
    - **Pairing code input field** (if the service enabled the pairing code during handshake; otherwise skipped)
 
 **Initialization request/response:**
@@ -745,6 +722,8 @@ The pre-negotiation phase enables these multi-round-trip protocols without requi
 |-------|---------|---------|
 | Pre-negotiation | Page ↔ Server | Page establishes state before pairing UI appears |
 | Negotiation | App ↔ Server | App performs the out-of-band operation |
+
+**Why no browser→app channel?** The protocol provides page↔server exchanges (pre-negotiation) and app↔server exchanges (negotiation), but no direct browser→app communication channel. Real-world use-case exploration hasn't revealed a need for this. If such a need arose, data would have to be included in the QR code (e.g., as a "clientData" field). This approach is severely limited: QR data is visible to observation-only attackers, so it cannot carry secrets or sensitive information that the app shouldn't share with potential attackers. Any browser→app data would need to be treated as potentially attacker-controlled by the app.
 
 **How it works:**
 
@@ -1316,8 +1295,6 @@ The protocol handles secure binding—it does not dictate what happens during ne
 
 2. **Does the user have enough information to consent?** The protocol delivers a result to the browser, but the user's informed consent happens in the companion app. For document signing, the app should display the document (not just a hash). For payments, the app should display the amount and recipient. This is UX design, not protocol design, but it's critical for the use case to be trustworthy.
 
-3. **Who provides the payload?** The web page provides a `payload` field that reaches the companion app. For some use cases, this payload comes from the service the user trusts. For others (e.g., payments), the payload comes from a third party (the merchant). The companion app must handle this appropriately—displaying untrusted data clearly, validating against its own backend, etc.
-
 These considerations are outside the protocol's scope but essential for building trustworthy applications on top of it.
 
 ---
@@ -1504,7 +1481,7 @@ All state is local to the ceremony and discarded on completion or cancellation. 
 The companion application implements:
 
 1. **QR code scanning:** Standard library operation
-2. **Payload parsing:** JSON decode
+2. **Transfer data parsing:** JSON decode
 3. **Origin display:** Show the service origin to user
 4. **Negotiate request:** Single HTTP POST
 5. **Pairing code display:** Show code to user (if enabled)
@@ -2599,18 +2576,17 @@ This appendix provides detailed analysis of QR code capacity for the session tra
 
 ### F.1 Question
 
-QR codes have versions 1-40, with increasing capacity. The question: **Is QR capacity sufficient for this protocol's payload?**
+QR codes have versions 1-40, with increasing capacity. The question: **Is QR capacity sufficient for this protocol's transfer payload?**
 
-### F.2 Payload Components
+### F.2 Transfer Payload Components
 
 What must be encoded:
 - `version`: 1 byte (the digit `1`)
 - `url`: Negotiate endpoint URL (full URL)
 - `session_id`: max 64 characters (typically 22 for UUIDv4)
 - `name`: Service display name
-- `payload`: Optional, base64-encoded JSON
 
-### F.3 Realistic Payload Sizes
+### F.3 Realistic Transfer Payload Sizes
 
 **Minimal (short URL, UUIDv4 session ID):**
 ```
@@ -2626,14 +2602,13 @@ What must be encoded:
 ```
 ~150 bytes
 
-**Large (enterprise URL, max-length session ID, included payload):**
+**Large (enterprise URL, max-length session ID):**
 ```
 {"version":1,"url":"https://auth.corporate-solutions.example.com/api/v2/bind/negotiate",
 "session_id":"ZXh0cmVtZWx5IGxvbmcgc2Vzc2lvbiBpZCB0aGF0IHVzZXMgYWxsIDY0IGNoYXJz",
-"name":"Corporate Portal",
-"payload":"eyJhbW91bnQiOiI0OS45OSJ9"}
+"name":"Corporate Portal"}
 ```
-~290 bytes
+~200 bytes
 
 ### F.4 QR Code Capacity
 
@@ -2641,10 +2616,9 @@ QR code capacity in binary mode with Level L error correction:
 
 | Version | Modules | Capacity | Sufficient for |
 |---------|---------|----------|----------------|
-| 5 | 37×37 | 106 bytes | Minimal payloads |
-| 10 | 57×57 | 271 bytes | Typical payloads |
-| 15 | 77×77 | 412 bytes | Large payloads with service payload |
-| 20 | 97×97 | 666 bytes | Very large payloads |
+| 5 | 37×37 | 106 bytes | Minimal transfer payloads |
+| 10 | 57×57 | 271 bytes | Typical and large transfer payloads |
+| 15 | 77×77 | 412 bytes | Far exceeds protocol requirements |
 
 ### F.5 Display Considerations
 
@@ -2652,7 +2626,7 @@ A Version 10 QR code (57×57 modules) displayed at 4 pixels per module requires 
 
 ### F.6 Conclusion
 
-Typical payloads fit comfortably in Version 5-10 QR codes. Even enterprise-scale URLs with max-length session IDs and service payloads fit within Version 15. The 1500-byte total payload limit (Section 4.5.1) ensures payloads fit comfortably within Version 12-15, well within the reliable scanning range. QR capacity is not a practical constraint for this protocol.
+Typical transfer payloads fit comfortably in Version 5-10 QR codes. Even enterprise-scale URLs with max-length session IDs (~200 bytes) fit within Version 10. The 300-byte total transfer payload limit (Section 4.5.1) ensures payloads remain well within Version 10-12, easily scannable. QR capacity is not a practical constraint for this protocol.
 
 ---
 
