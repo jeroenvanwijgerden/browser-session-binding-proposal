@@ -4,61 +4,30 @@
 
 This proof of concept demonstrates the OOB session binding protocol with two use cases:
 
-1. **Authentication** - Cross-device login using passkeys
-2. **File Transfer** - Streaming file transfer from phone to browser
+1. **Authentication** - Cross-device login using passkeys (same-origin)
+2. **File Transfer** - Streaming file transfer from phone to browser (cross-origin)
 
-Both use cases use the same binding protocol; the difference is what gets negotiated and delivered.
+Both use cases use the same browser extension and the same binding protocol. The difference is:
+- **What gets negotiated:** a session token vs. streaming connection info
+- **Origin policy:** authentication enforces same-origin; file transfer allows any origin
 
 ## Directory Structure
 
 ```
 proof-of-concept/
-├── authentication/       # Cross-device login PoC
-│   ├── service/          # Login page + protocol endpoints (port 3000)
-│   └── app/              # Companion app simulator (port 3001)
-├── file-transfer/        # File transfer PoC
-│   ├── service/          # File receiver + streaming relay (port 3000)
-│   └── app/              # File sender simulator (port 3001)
-└── browser-extensions/
-    ├── chrome/           # Chrome extension (Manifest V3)
-    └── firefox/          # Firefox extension (Manifest V2)
+├── browser-extensions/       # Shared by both use cases
+│   ├── chrome/               # Chrome extension (Manifest V3)
+│   └── firefox/              # Firefox extension (Manifest V2)
+├── authentication/           # Cross-device login PoC
+│   ├── service/              # Login page + protocol endpoints (port 3000)
+│   └── app/                  # Companion app simulator (port 3001)
+└── file-transfer/            # File transfer PoC
+    ├── receiver/             # Receiver webpage (port 3000)
+    ├── app/                  # Sender app simulator (port 3001)
+    └── relay/                # Streaming relay service (port 3002)
 ```
 
----
-
-## Authentication PoC
-
-### Quick Start
-
-Requirements:
-- Node.js (tested on version 22.16.0)
-- either
-  - Firefox (tested on version 134.0.2)
-  - Chrome (tested on version 140.0.7339.207)
-
-#### 1. Start the Service
-
-```bash
-cd authentication/service
-npm install
-node server.js
-```
-
-The service runs on http://localhost:3000 with a REPL for inspecting state.
-
-#### 2. Start the App
-
-```bash
-cd authentication/app
-npm install
-node server.js
-```
-
-The companion app runs on http://localhost:3001.
-
-> **Why a server?** The app is just static HTML/JS, but WebAuthn requires a [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts) (localhost or HTTPS). Opening the HTML file directly (`file://`) won't work.
-
-#### 3. Install a Browser Extension
+## Browser Extension Setup (Required for Both PoCs)
 
 **Firefox:**
 1. Open `about:debugging#/runtime/this-firefox`
@@ -69,6 +38,32 @@ The companion app runs on http://localhost:3001.
 1. Open `chrome://extensions`
 2. Enable Developer mode
 3. Click "Load unpacked" and select `browser-extensions/chrome`
+
+---
+
+## Authentication PoC
+
+Demonstrates same-origin authentication where a companion app (e.g., a password manager) authenticates on behalf of the user.
+
+### Requirements
+
+- Node.js (tested on version 22.16.0)
+- Firefox (tested on version 134.0.2) or Chrome (tested on version 140.0.7339.207)
+- Browser extension installed (see above)
+
+### Quick Start
+
+```bash
+# Terminal 1 - Service (port 3000)
+cd authentication/service
+npm install
+node server.js
+
+# Terminal 2 - App (port 3001)
+cd authentication/app
+npm install
+node server.js
+```
 
 ### Demo Flow
 
@@ -136,32 +131,88 @@ The normal flow described in "Demo Flow" above.
 
 ## File Transfer PoC
 
-Demonstrates the protocol for file transfer, where the negotiated result is streaming connection info rather than static data.
+Demonstrates cross-origin file transfer where a relay service bridges the sender app and receiver browser. This showcases:
+
+- **Cross-origin support:** The receiver webpage (port 3000) communicates with the relay (port 3002)
+- **Pre-negotiation phase:** The page registers a download key before the pairing UI appears
+- **Streaming with backpressure:** Files transfer without buffering the entire file in memory
 
 ### Quick Start
 
 ```bash
-# Terminal 1 - Service (port 3000)
-cd file-transfer/service
+# Terminal 1 - Receiver webpage (port 3000)
+cd file-transfer/receiver
+npm install
 npm start
 
-# Terminal 2 - App (port 3001)
+# Terminal 2 - Sender app (port 3001)
 cd file-transfer/app
+npm install
+npm start
+
+# Terminal 3 - Relay service (port 3002)
+cd file-transfer/relay
+npm install
 npm start
 ```
 
 ### Demo Flow
 
-1. Open http://localhost:3000 in a browser
+1. Open http://localhost:3000 in a browser (the receiver)
 2. Open http://localhost:3001 in another tab (simulating the phone app)
-3. In the browser: click "Receive file from app"
-4. In the app: select a file, paste the session info, click "Upload"
-5. In the app: note the pairing code
-6. In the browser: enter the pairing code
-7. In the browser: click "Download file" to verify the transfer worked
+3. In the receiver: click "Receive file from app"
+4. The extension opens a window with session info - copy the JSON
+5. In the app: select a file, paste the session info, click "Upload"
+6. Note the pairing code shown in the app
+7. In the extension window: enter the pairing code and click Complete
+8. The receiver shows "File ready!" - click "Download file"
+9. The app shows "File sent successfully!" when the browser finishes downloading
 
-### Key Difference
+### Key Differences from Authentication
 
-In authentication, the negotiated result is a session token (static data).
+| Aspect | Authentication PoC | File Transfer PoC |
+|--------|-------------------|-------------------|
+| Origin policy | Same-origin only | Any origin allowed |
+| Negotiated result | Session token (static) | Stream URLs (live connection) |
+| Pre-negotiation | Not used | Page registers download key |
+| Phishing risk | High (credentials) | Low (file data) |
 
-In file transfer, the negotiated result is connection info for a live streaming session. The service acts as a buffered relay between the app (uploader) and browser (downloader), with minimal memory footprint.
+See `file-transfer/README.md` for detailed documentation of the streaming protocol.
+
+---
+
+## Code Organization
+
+The code is intentionally written to be **readable and approachable** rather than highly optimized. Readers exploring the proposal can follow along with the implementation without needing deep expertise.
+
+Each file includes comments explaining:
+- What the component does
+- How it fits into the protocol
+- Key security considerations
+
+### Entry Points for Reading
+
+**Browser Extension (Firefox):**
+- `browser-extensions/firefox/inject.js` - The `navigator.outOfBandBinding` API
+- `browser-extensions/firefox/background.js` - Protocol logic and crypto
+- `browser-extensions/firefox/popup.js` - Trusted UI interaction
+
+**Authentication Service:**
+- `authentication/service/server.js` - All four protocol endpoints + REPL
+
+**File Transfer Relay:**
+- `file-transfer/relay/server.js` - Protocol endpoints + streaming logic
+
+---
+
+## What This Demonstrates
+
+1. **The protocol works.** Both authentication and file transfer complete successfully using the same browser extension and protocol structure.
+
+2. **Flexibility via origin policy.** The server decides whether to accept cross-origin requests. Authentication rejects non-localhost; file transfer accepts any origin.
+
+3. **Extensibility via pre-negotiation.** The file transfer PoC shows how pages can perform arbitrary protocol exchanges with the server before the pairing UI appears.
+
+4. **Security properties hold.** Session hijacking is prevented by signatures. Session fixation is prevented by pairing codes. Multi-negotiation is detected and flagged.
+
+5. **Browser extensions suffice.** The full protocol can be implemented without native browser support, enabling ecosystem development today.
