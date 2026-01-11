@@ -48,7 +48,7 @@ Any complying browser, app, and service can participate. For many applications r
   - [4.4 User Agent UI Requirements](#44-user-agent-ui-requirements)
   - [4.5 Transfer Mechanisms](#45-transfer-mechanisms)
     - [4.5.1 Transfer Payload Format](#451-transfer-payload-format)
-    - [4.5.2 QR Code Capacity Analysis](#452-qr-code-capacity-analysis)
+    - [4.5.2 QR Code Capacity](#452-qr-code-capacity)
   - [4.6 Safety of Service-Provided Text](#46-safety-of-service-provided-text)
 - [5. Protocol Flow](#5-protocol-flow)
   - [5.1 Overview](#51-overview)
@@ -114,6 +114,8 @@ Any complying browser, app, and service can participate. For many applications r
   - [17.4 Regulatory Support](#174-regulatory-support)
   - [17.5 Independent Browser Vendors](#175-independent-browser-vendors)
   - [17.6 The Chicken-and-Egg Problem](#176-the-chicken-and-egg-problem)
+  - [17.7 Why Native Browser Implementation Matters](#177-why-native-browser-implementation-matters)
+  - [17.8 Polyfill Limitations](#178-polyfill-limitations)
 - [18. Conclusion](#18-conclusion)
 - [License](#license)
 - [References](#references)
@@ -142,6 +144,13 @@ Any complying browser, app, and service can participate. For many applications r
   - [E.6 Security Considerations](#e6-security-considerations)
   - [E.7 Memory Efficiency](#e7-memory-efficiency)
   - [E.8 Proof of Concept](#e8-proof-of-concept)
+- [Appendix F: QR Code Capacity Analysis](#appendix-f-qr-code-capacity-analysis)
+  - [F.1 Question](#f1-question)
+  - [F.2 Payload Components](#f2-payload-components)
+  - [F.3 Realistic Payload Sizes](#f3-realistic-payload-sizes)
+  - [F.4 QR Code Capacity](#f4-qr-code-capacity)
+  - [F.5 Display Considerations](#f5-display-considerations)
+  - [F.6 Conclusion](#f6-conclusion)
 
 ---
 
@@ -576,54 +585,11 @@ To ensure interoperability between any compliant companion application and any c
 3. Base64 encode → `eyJhbW91bnQiOiI0OS45OSIsImN1cnJlbmN5IjoiRVVSIn0`
 4. This string becomes the `payload` field value in the transfer JSON
 
-#### 4.5.2 QR Code Capacity Analysis
+#### 4.5.2 QR Code Capacity
 
-QR codes have versions 1-40, with increasing capacity. The question: **Is QR capacity sufficient for this protocol's payload?**
+Typical protocol payloads (110-150 bytes) fit comfortably in Version 5-10 QR codes. Even enterprise-scale URLs with maximum-length session IDs and service payloads (~290 bytes) fit within Version 15. A Version 10 QR code (57×57 modules) displayed at 4 pixels per module requires only 228×228 pixels—easily accommodated in browser UI and scannable by modern smartphone cameras. The 1500-byte payload limit (Section 4.5.1) ensures payloads remain within Version 12-15, well within the reliable scanning range.
 
-**What must be encoded:**
-- `version`: 1 byte (the digit `1`)
-- `url`: Negotiate endpoint URL (full URL)
-- `session_id`: max 64 characters (typically 22 for UUIDv4)
-- `name`: Service display name
-- `payload`: Optional, base64-encoded JSON
-
-**Realistic payload sizes:**
-
-*Minimal (short URL, UUIDv4 session ID):*
-```
-{"version":1,"url":"https://example.com/bind/negotiate",
-"session_id":"dGhpcyBpcyBhIHV1aWQ0","name":"Example"}
-```
-~110 bytes
-
-*Typical (moderate URL, UUIDv4 session ID):*
-```
-{"version":1,"url":"https://auth.example-service.com/api/oob/negotiate",
-"session_id":"dGhpcyBpcyBhIHV1aWQ0Lg","name":"Example Service"}
-```
-~150 bytes
-
-*Large (enterprise URL, max-length session ID, included payload):*
-```
-{"version":1,"url":"https://auth.corporate-solutions.example.com/api/v2/bind/negotiate",
-"session_id":"ZXh0cmVtZWx5IGxvbmcgc2Vzc2lvbiBpZCB0aGF0IHVzZXMgYWxsIDY0IGNoYXJz",
-"name":"Corporate Portal",
-"payload":"eyJhbW91bnQiOiI0OS45OSJ9"}
-```
-~290 bytes
-
-**QR code capacity (binary mode, Level L error correction):**
-
-| Version | Modules | Capacity | Sufficient for |
-|---------|---------|----------|----------------|
-| 5 | 37×37 | 106 bytes | Minimal payloads |
-| 10 | 57×57 | 271 bytes | Typical payloads |
-| 15 | 77×77 | 412 bytes | Large payloads with service payload |
-| 20 | 97×97 | 666 bytes | Very large payloads |
-
-**Conclusion:** Typical payloads fit comfortably in Version 5-10 QR codes. Even enterprise-scale URLs with max-length session IDs and service payloads fit within Version 15. QR capacity is not a practical constraint for this protocol.
-
-**Display considerations:** A Version 10 QR code (57×57 modules) displayed at 4 pixels per module requires only 228×228 pixels—easily accommodated in browser UI. Higher versions (up to Version 20) remain scannable on modern smartphone cameras at typical browser UI sizes. Very high versions (Version 30-40) become increasingly difficult to scan reliably from browser UIs due to module density—these should be avoided. The 1500-byte total payload limit (Section 4.5.1) ensures payloads fit comfortably within Version 12-15, well within the reliable scanning range.
+**Conclusion:** QR capacity is not a practical constraint for this protocol. See Appendix F for detailed capacity analysis.
 
 ### 4.6 Safety of Service-Provided Text
 
@@ -794,9 +760,15 @@ The pre-negotiation phase enables these multi-round-trip protocols without requi
 
 **Security considerations:**
 
-- The page's pre-negotiation code runs in the page context, not the extension. It has access to the session ID but not the private key.
-- The page can make arbitrary HTTP requests to the service during pre-negotiation. The service must validate that requests are appropriate for the current session state.
-- The browser does not interpret the pre-negotiation protocol—it simply waits for completion.
+- The page's pre-negotiation code runs in the page context, not the extension. It has access to the session ID but not the private key—the security binding established at initialization cannot be altered by pre-negotiation.
+- The page can make arbitrary HTTP requests to the service during pre-negotiation. The browser does not interpret these—it simply waits for completion.
+
+**Server requirements during pre-negotiation:**
+
+- The server SHOULD validate that pre-negotiation requests are appropriate for the current session state.
+- The server SHOULD NOT allow pre-negotiation to modify the public key binding established at initialization.
+- The server SHOULD enforce state transitions (e.g., require `initialized` state before accepting pre-negotiation requests, transition to `pre-negotiated` upon completion).
+- The server SHOULD NOT expose sensitive ceremony information beyond what the page legitimately requires for its protocol.
 
 A proof-of-concept demonstrating pre-negotiation for live file transfer is available; see Section 10.6 and Appendix E for details.
 
@@ -846,9 +818,8 @@ The service validates:
 
 1. The session ID exists and has not expired
 2. The signature is valid for the stored public key
-3. The timestamp is recent (prevents replay)
-4. A negotiation has occurred (result is staged)
-5. If pairing code is enabled: the pairing code matches
+3. A negotiation has occurred (result is staged)
+4. If pairing code is enabled: the pairing code matches
 
 **Outcomes:**
 
@@ -1377,8 +1348,10 @@ Services MAY implement retry limits as defense-in-depth. A limit of 5-10 attempt
   *Warning:* Do not implement custom random ID generation. Use your platform's standard UUID library. Weak randomness enables session prediction attacks; if you get this wrong, attackers can hijack ceremonies by guessing session IDs.
 
 - **Key pairs:** ECDSA P-256, Ed25519, or equivalent security level
-- **Signatures:** Must include timestamp to prevent replay
+- **Signatures:** Include timestamp for auditing and defense-in-depth
 - **All cryptographic operations:** Use well-tested libraries (e.g., WebCrypto API)
+
+**Replay prevention.** Replay attacks are primarily prevented by the session state machine: sessions are single-use and deleted upon completion. An attacker who captures a valid `complete` request cannot replay it—the session no longer exists. Timestamps in signatures provide additional defense-in-depth and support audit logging.
 
 **Session-level expiration.** The entire binding ceremony has a single expiration time, set by `timeoutSeconds` in the API request. All tokens and state associated with a session share this deadline. After the deadline, all operations on the session fail and all state is discarded.
 
@@ -1391,6 +1364,15 @@ User agents MUST provide transfer mechanisms usable by people with disabilities:
 - Screen reader compatible manual code entry
 - Keyboard-only operation
 - Sufficient time for completion (configurable timeout)
+
+**Open questions for UX and accessibility experts:**
+
+- How does manual pairing code entry work with screen readers in practice? What ARIA patterns are appropriate?
+- What timing accommodations are needed for users who require more time? How should the timeout interact with assistive technology?
+- What alternative transfer mechanisms should be specified for users who cannot use cameras (for QR codes) or who rely on specific input methods?
+- How should the trusted UI communicate ceremony state to users with cognitive disabilities?
+
+These questions require expert evaluation and user testing beyond the scope of this initial proposal. See Future Work (Section 16).
 
 ### 11.4 Ceremony Length
 
@@ -1630,23 +1612,23 @@ The protocol doesn't replace authentication standards; it provides secure delive
 
 ## 15. Anticipated Questions
 
-### Q: Why not extend WebAuthn or FIDO2 instead of creating a new protocol?
+### Q1: Why not extend WebAuthn or FIDO2 instead of creating a new protocol?
 
 WebAuthn specifies *how to authenticate* using public-key cryptography. This protocol specifies *how to deliver results* to a browser session. They operate at different layers and are complementary.
 
 More practically: WebAuthn's hybrid transport requires platform integration (the authenticator must be recognized by the OS or browser). This protocol is platform-neutral--any app can participate without vendor permission. A companion app could use WebAuthn internally and then use this protocol to deliver the resulting session token.
 
-### Q: Why not use CIBA (Client-Initiated Backchannel Authentication)?
+### Q2: Why not use CIBA (Client-Initiated Backchannel Authentication)?
 
 CIBA is tightly coupled to OpenID Connect and specifies authentication semantics. This protocol is agnostic--it works for authentication, signing, payments, or any operation where a companion app negotiates with a service. CIBA also lacks browser-native trusted UI; it relies on out-of-band notification mechanisms that vary by implementation.
 
-### Q: Why not use OAuth Device Authorization Grant (RFC 8628)?
+### Q3: Why not use OAuth Device Authorization Grant (RFC 8628)?
 
 The Device Grant solves the opposite problem: authorizing a *limited-input device* (like a TV) by having the user authenticate on a *full browser*. This protocol delivers results *to* a browser from a companion device. The direction is reversed.
 
 Additionally, the Device Grant doesn't have the session hijacking protections this protocol provides.
 
-### Q: Why does the server generate the session ID, not the browser?
+### Q4: Why does the server generate the session ID, not the browser?
 
 The server generates the session ID during initialization, after receiving the browser's public key. This design:
 
@@ -1654,15 +1636,15 @@ The server generates the session ID during initialization, after receiving the b
 2. **Keeps the session ID unexposed until initialization completes.** The browser generates a key pair, sends the public key, and only then receives the session ID. The session ID is never exposed before the cryptographic binding is established.
 3. **Simplifies the protocol.** The browser only generates one thing (the key pair), and the server only generates one thing (the session ID).
 
-### Q: What about same-device scenarios (app and browser on the same phone)?
+### Q5: What about same-device scenarios (app and browser on the same phone)?
 
 The protocol supports this via alternative transfer mechanisms: copy-paste, deep links, or local communication. The security properties remain identical.
 
-### Q: What prevents replay attacks?
+### Q6: What prevents replay attacks?
 
-Session IDs are single-use and short-lived. Signatures include timestamps to prevent replay. The server enforces expiration and rejects stale timestamps. Replaying a request after the session expires or with an old timestamp has no effect.
+The session state machine is the primary defense: sessions are single-use and deleted upon successful completion. An attacker who captures a valid `complete` request cannot replay it—the session no longer exists. Timestamps in signatures provide defense-in-depth and support audit logging.
 
-### Q: Why four endpoints instead of fewer?
+### Q7: Why four endpoints instead of fewer?
 
 Each endpoint has a distinct caller and purpose:
 
@@ -1673,21 +1655,21 @@ Each endpoint has a distinct caller and purpose:
 
 Combining them would conflate responsibilities and complicate the security analysis.
 
-### Q: What if the user closes the browser mid-ceremony?
+### Q8: What if the user closes the browser mid-ceremony?
 
 The ceremony times out. No state persists beyond the configured timeout. The user simply starts over.
 
-### Q: How does this interact with existing authentication systems?
+### Q9: How does this interact with existing authentication systems?
 
 The protocol is a transport layer that sits alongside existing authentication. A service continues using whatever authentication it has (passwords, passkeys, OAuth, SAML). This protocol just provides a new way to deliver the authentication result to a browser session.
 
 Services can adopt it incrementally—add the four endpoints (or deploy a reference container) and offer it as an additional login method. No dedicated companion app is required; any protocol-compliant third-party app (password managers, authenticators) will work.
 
-### Q: Does a service need to build its own companion app?
+### Q10: Does a service need to build its own companion app?
 
 No. Any protocol-compliant companion app works with any protocol-compliant service. A user with a general-purpose authenticator or password manager that supports this protocol can use it for all services that implement the protocol's endpoints. Services that already have dedicated apps can continue using them, but new services can rely entirely on third-party companion apps—they only need to implement the server-side endpoints.
 
-### Q: Why is the pairing code optional? Doesn't disabling it compromise security?
+### Q11: Why is the pairing code optional? Doesn't disabling it compromise security?
 
 Security always trades off against usability. The pairing code protects against session fixation by observation-only attackers. Disabling it makes the ceremony simpler (no code entry) but vulnerable to this attack.
 
@@ -1695,58 +1677,20 @@ Session hijacking is *always* protected by the signature mechanism—that's not 
 
 Services should enable the pairing code for high-value operations. They may disable it for low-value operations, when fixation attacks are immediately detectable (e.g., identity-binding scenarios where users see "Welcome, [Name]"), or when other mitigations exist.
 
-### Q: What if an attacker can type into my browser?
+### Q12: What if an attacker can type into my browser?
 
 If an attacker can type into your browser (physical keyboard access, remote desktop, input injection malware), the pairing code provides no protection—nor does any other authentication mechanism. Such an attacker can fill in password fields, click approve buttons, and navigate to any page. This protocol protects against *observation-only* attackers (shoulder-surfing, screen capture, camera surveillance). Physical security threats require physical security measures.
-
-### Q: Can this protocol be polyfilled before browsers implement it natively?
-
-Partially. A JavaScript library could implement most of the flow: generate key pairs, render QR codes, poll endpoints. However, a polyfill cannot provide the key security property: a trusted UI that the web page cannot manipulate, and crucially, keeping the private key isolated from the page context.
-
-In a polyfill, a malicious page could observe the session ID before initialization completes, or manipulate the "trusted" UI. The security guarantees require native browser implementation.
-
-A polyfill would still be valuable for:
-- Demonstrating the UX to users and stakeholders
-- Allowing services to implement endpoints before browser support
-- Testing companion app implementations
-- Building ecosystem momentum
-
-But the security guarantees require native browser implementation. The polyfill would be a development and demonstration tool, not a production security mechanism.
-
-### Q: If a browser extension can provide the full security guarantees, why should this become part of the browser spec?
-
-A well-designed browser extension can indeed provide the same security properties as a native implementation (see Section 17.3). However, native browser implementation remains important for several reasons:
-
-1. **Reach.** Extensions require explicit installation. Native support reaches all users by default. Security features that require opt-in installation remain niche; those built into the platform become ubiquitous.
-
-2. **Trust.** Users must evaluate whether to trust an extension—who authored it, whether it's been audited, whether updates might introduce vulnerabilities. Native browser features inherit the trust users already place in their browser. The extension approach shifts security evaluation burden to users who are poorly equipped for it.
-
-3. **Maintenance.** Extensions can be abandoned, sold to malicious actors, or fall out of sync with browser updates. Native implementations are maintained as part of the browser's security surface.
-
-4. **Discoverability.** Services cannot reliably detect whether users have the capability. With native support, feature detection is straightforward and services can confidently offer the authentication method.
-
-5. **Legitimacy.** A standardized browser API signals that the capability is sanctioned and stable. Services and companion apps are more likely to invest in supporting a W3C standard than a third-party extension.
-
-The extension serves as a proving ground—demonstrating viability, building ecosystem momentum, and providing immediate value to security-conscious users. But the end goal remains native browser support, where the security benefits become available to everyone without requiring individual action.
-
-### Q: What if a browser, app, or service implements the protocol incorrectly?
-
-The same thing that happens today when browsers, apps, or services implement security incorrectly: security degrades.
-
-Users already trust their browser to implement same-origin policy, TLS validation, and secure randomness. Users already trust their password manager or authenticator app to protect secrets and validate certificates. Users already trust services to hash passwords and generate unpredictable session tokens. Failures in any of these are already security catastrophes—regardless of this protocol.
-
-This protocol does not introduce new trust relationships. It extends existing responsibilities. See Section 7.7 for detailed analysis.
 
 ---
 
 ## 16. Future Work
 
-- Formal specification with complete schemas and state machine
-- Security analysis and/or formal verification
-- Usability studies
-- Reference implementations
-- Accessibility review
-- W3C standardization
+- **Formal specification:** Complete JSON schemas and state machine formalization
+- **Formal security verification:** The security reasoning in this proposal appears sound but has not been formally verified. Tools such as ProVerif, Tamarin, or Protocol Composition Logic (PCL) could provide rigorous proof of the claimed security properties. This would significantly strengthen the case for standardization.
+- **Usability studies:** Real-world testing with diverse user populations
+- **Reference implementations:** Production-quality server libraries and browser components
+- **Accessibility review:** Expert evaluation of the pairing code mechanism for users with disabilities (see Section 11.3)
+- **W3C standardization:** Formal standards track process
 
 ---
 
@@ -1841,6 +1785,36 @@ Adoption requires both services implementing endpoints and companion apps suppor
 4. Browser implementation follows demonstrated ecosystem viability
 
 The protocol is designed so that partial adoption still provides value. Even a single companion app supporting the protocol makes it useful for all services that implement the endpoints.
+
+### 17.7 Why Native Browser Implementation Matters
+
+A well-designed browser extension can provide the same security properties as a native implementation (see Section 17.3). However, native browser implementation remains the goal for several reasons:
+
+1. **Reach.** Extensions require explicit installation. Native support reaches all users by default. Security features that require opt-in installation remain niche; those built into the platform become ubiquitous.
+
+2. **Trust.** Users must evaluate whether to trust an extension—who authored it, whether it's been audited, whether updates might introduce vulnerabilities. Native browser features inherit the trust users already place in their browser. The extension approach shifts security evaluation burden to users who are poorly equipped for it.
+
+3. **Maintenance.** Extensions can be abandoned, sold to malicious actors, or fall out of sync with browser updates. Native implementations are maintained as part of the browser's security surface.
+
+4. **Discoverability.** Services cannot reliably detect whether users have the capability. With native support, feature detection is straightforward and services can confidently offer the authentication method.
+
+5. **Legitimacy.** A standardized browser API signals that the capability is sanctioned and stable. Services and companion apps are more likely to invest in supporting a W3C standard than a third-party extension.
+
+The extension serves as a proving ground—demonstrating viability, building ecosystem momentum, and providing immediate value to security-conscious users. But the end goal remains native browser support, where the security benefits become available to everyone without requiring individual action.
+
+### 17.8 Polyfill Limitations
+
+A JavaScript library could implement most of the flow: generate key pairs, render QR codes, poll endpoints. However, a polyfill cannot provide the key security property: a trusted UI that the web page cannot manipulate, and crucially, keeping the private key isolated from the page context.
+
+In a polyfill, a malicious page could observe the session ID before initialization completes, or manipulate the "trusted" UI. The security guarantees require either a browser extension or native browser implementation.
+
+A polyfill would still be valuable for:
+- Demonstrating the UX to users and stakeholders
+- Allowing services to implement endpoints before browser support
+- Testing companion app implementations
+- Building ecosystem momentum
+
+But for production security, either an extension or native implementation is required.
 
 ---
 
@@ -2616,6 +2590,69 @@ The file transfer proof of concept includes:
 - **Relay service** (`localhost:3002`): Demonstrates state machine, streaming, and backpressure
 
 The three components run on different ports, demonstrating the cross-origin capability. The receiver page at `localhost:3000` successfully communicates with the relay at `localhost:3002`.
+
+---
+
+## Appendix F: QR Code Capacity Analysis
+
+This appendix provides detailed analysis of QR code capacity for the session transfer format defined in Section 4.5.
+
+### F.1 Question
+
+QR codes have versions 1-40, with increasing capacity. The question: **Is QR capacity sufficient for this protocol's payload?**
+
+### F.2 Payload Components
+
+What must be encoded:
+- `version`: 1 byte (the digit `1`)
+- `url`: Negotiate endpoint URL (full URL)
+- `session_id`: max 64 characters (typically 22 for UUIDv4)
+- `name`: Service display name
+- `payload`: Optional, base64-encoded JSON
+
+### F.3 Realistic Payload Sizes
+
+**Minimal (short URL, UUIDv4 session ID):**
+```
+{"version":1,"url":"https://example.com/bind/negotiate",
+"session_id":"dGhpcyBpcyBhIHV1aWQ0","name":"Example"}
+```
+~110 bytes
+
+**Typical (moderate URL, UUIDv4 session ID):**
+```
+{"version":1,"url":"https://auth.example-service.com/api/oob/negotiate",
+"session_id":"dGhpcyBpcyBhIHV1aWQ0Lg","name":"Example Service"}
+```
+~150 bytes
+
+**Large (enterprise URL, max-length session ID, included payload):**
+```
+{"version":1,"url":"https://auth.corporate-solutions.example.com/api/v2/bind/negotiate",
+"session_id":"ZXh0cmVtZWx5IGxvbmcgc2Vzc2lvbiBpZCB0aGF0IHVzZXMgYWxsIDY0IGNoYXJz",
+"name":"Corporate Portal",
+"payload":"eyJhbW91bnQiOiI0OS45OSJ9"}
+```
+~290 bytes
+
+### F.4 QR Code Capacity
+
+QR code capacity in binary mode with Level L error correction:
+
+| Version | Modules | Capacity | Sufficient for |
+|---------|---------|----------|----------------|
+| 5 | 37×37 | 106 bytes | Minimal payloads |
+| 10 | 57×57 | 271 bytes | Typical payloads |
+| 15 | 77×77 | 412 bytes | Large payloads with service payload |
+| 20 | 97×97 | 666 bytes | Very large payloads |
+
+### F.5 Display Considerations
+
+A Version 10 QR code (57×57 modules) displayed at 4 pixels per module requires only 228×228 pixels—easily accommodated in browser UI. Higher versions (up to Version 20) remain scannable on modern smartphone cameras at typical browser UI sizes. Very high versions (Version 30-40) become increasingly difficult to scan reliably from browser UIs due to module density—these should be avoided.
+
+### F.6 Conclusion
+
+Typical payloads fit comfortably in Version 5-10 QR codes. Even enterprise-scale URLs with max-length session IDs and service payloads fit within Version 15. The 1500-byte total payload limit (Section 4.5.1) ensures payloads fit comfortably within Version 12-15, well within the reliable scanning range. QR capacity is not a practical constraint for this protocol.
 
 ---
 
