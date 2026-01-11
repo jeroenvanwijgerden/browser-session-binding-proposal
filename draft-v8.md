@@ -8,7 +8,7 @@
 
 **Version:** 0.6 (Draft for public comment)
 
-**Disclosure:** The protocol design and core ideas are the author's original work. Large language models were used to identify edge cases, stress-test the security model, create a proof of concept, and draft this document for a standards audience. The author reviewed all but edited only some of the generated text.
+**Disclosure:** The protocol design and core ideas are the author's original work. Large language models were used to identify edge cases, stress-test the security model, and create a proof of concept. Of the text in this document, the author personally wrote only this disclosure, the abstract, and the executive summary; the remainder was drafted by a large language model for a standards audience. TODO continue here.  and draft this document for a standards audience. The author reviewed all but edited only some of the generated text.
 
 The author is a software engineer, not a security or UX expert. The protocol design reflects engineering judgment about secure system composition; specific parameter recommendations (entropy requirements, pairing code lengths, token lifetimes) are based on common practice and should be validated by domain experts.
 
