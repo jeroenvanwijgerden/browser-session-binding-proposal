@@ -3,8 +3,9 @@
 // This handles the protocol logic for OOB session binding:
 // 1. Receives binding requests from inject.js (via content-script.js)
 // 2. Performs handshake + initialize with the service
-// 3. Opens a popup window for trusted UI
-// 4. Waits for user to enter pairing code, then calls /bind/complete
+// 3. If pre-negotiation requested, waits for page to complete it
+// 4. Opens a popup window for trusted UI
+// 5. Waits for user to enter pairing code, then calls /bind/complete
 //
 // The private key never leaves this context - pages cannot access it.
 //
@@ -13,6 +14,14 @@
 // the completion promise. Chrome doesn't have this issue.
 
 const ceremonies = new Map();  // tabId (as string) -> ceremony state
+
+// Resolve endpoint URL: if it starts with http(s), use as-is; otherwise prepend origin
+function resolveEndpoint(origin, endpoint) {
+  if (endpoint.startsWith('http://') || endpoint.startsWith('https://')) {
+    return endpoint;
+  }
+  return origin + endpoint;
+}
 
 browser.runtime.onMessage.addListener((message, sender) => {
   if (message.type === 'get-status') {
@@ -31,6 +40,15 @@ browser.runtime.onMessage.addListener((message, sender) => {
 
   if (message.type === 'binding-request') {
     return handleBindingRequest(message, sender);
+  }
+
+  if (message.type === 'pre-negotiate-complete') {
+    return handlePreNegotiateComplete(message, sender);
+  }
+
+  if (message.type === 'pre-negotiate-failed') {
+    handlePreNegotiateFailed(message, sender);
+    return Promise.resolve({ ok: true });
   }
 
   if (message.type === 'complete-ceremony') {
@@ -55,9 +73,14 @@ browser.tabs.onRemoved.addListener((tabId) => {
 });
 
 async function handleBindingRequest(message, sender) {
-  const { origin, options } = message;
+  const { options, hasPreNegotiate } = message;
   const tabId = sender.tab.id;
   const tabKey = String(tabId);
+
+  // SECURITY: Do NOT trust origin from page context. Extract from sender.tab.url
+  // The page could dispatch fake events with a spoofed origin.
+  const tabUrl = new URL(sender.tab.url);
+  const origin = tabUrl.origin;
 
   try {
     // Generate Ed25519 keypair
@@ -71,23 +94,29 @@ async function handleBindingRequest(message, sender) {
     const publicKeyRaw = await crypto.subtle.exportKey('raw', keyPair.publicKey);
     const publicKeyB64 = btoa(String.fromCharCode(...new Uint8Array(publicKeyRaw)));
 
-    // Handshake
-    const handshakeUrl = origin + options.handshakeEndpoint;
+    // Handshake - include requesting_origin per protocol spec
+    const handshakeUrl = resolveEndpoint(origin, options.handshakeEndpoint);
     const handshakeRes = await fetch(handshakeUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        requesting_origin: origin,
         algorithms: ['Ed25519']
       })
     });
     const handshake = await handshakeRes.json();
 
     if (handshake.type === 'rejected') {
-      return { status: 'error', errorCode: 'algorithm_rejected' };
+      // reasons is an array that may contain 'origin_not_allowed' and/or 'no_compatible_algorithm'
+      const reasons = handshake.reasons || [];
+      if (reasons.includes('origin_not_allowed')) {
+        return { status: 'error', errorCode: 'origin_rejected', errorMessage: 'Service rejected the requesting origin' };
+      }
+      return { status: 'error', errorCode: 'algorithm_rejected', errorMessage: 'No compatible algorithm' };
     }
 
     // Initialize
-    const initUrl = origin + options.initializeEndpoint;
+    const initUrl = resolveEndpoint(origin, options.initializeEndpoint);
     const initRes = await fetch(initUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -111,46 +140,84 @@ async function handleBindingRequest(message, sender) {
       options,
       keyPair,
       sessionId: init.session_id,
-      negotiateUrl: origin + options.negotiateEndpoint,
-      completeUrl: origin + options.completeEndpoint,
+      negotiateUrl: resolveEndpoint(origin, options.negotiateEndpoint),
+      completeUrl: resolveEndpoint(origin, options.completeEndpoint),
       pairingCodeSpec: handshake.pairing_code_specification,
       resolve: null,
       reject: null
     };
 
-    // Create a promise that the popup will resolve
-    const resultPromise = new Promise((resolve, reject) => {
-      ceremony.resolve = resolve;
-      ceremony.reject = reject;
-    });
-
     ceremonies.set(tabKey, ceremony);
 
-    // Store ceremony info for popup to read (message passing may be blocked)
-    await browser.storage.local.set({
-      activeCeremony: {
-        tabId,
-        origin: ceremony.origin,
-        sessionId: ceremony.sessionId,
-        negotiateUrl: ceremony.negotiateUrl
-      }
-    });
+    if (hasPreNegotiate) {
+      // Page wants to do pre-negotiation before we show UI
+      // Return session info and wait for pre-negotiate-complete message
+      return {
+        type: 'pre-negotiate-ready',
+        session: {
+          sessionId: init.session_id,
+          negotiateUrl: ceremony.negotiateUrl
+        }
+      };
+    }
 
-    // Open window for trusted UI
-    // Using 'normal' instead of 'popup' so tiling WMs can manage it
-    browser.windows.create({
-      url: 'popup.html',
-      type: 'normal',
-      width: 450,
-      height: 550
-    });
-
-    // Wait for completion
-    return await resultPromise;
+    // No pre-negotiation, proceed directly to UI
+    return await showUIAndWaitForCompletion(tabKey, ceremony);
 
   } catch (error) {
     return { status: 'error', errorCode: 'network_error', errorMessage: error.message };
   }
+}
+
+async function handlePreNegotiateComplete(message, sender) {
+  const tabKey = String(sender.tab.id);
+  const ceremony = ceremonies.get(tabKey);
+
+  if (!ceremony) {
+    return { status: 'error', errorCode: 'no_ceremony' };
+  }
+
+  // Page finished pre-negotiation, now show UI
+  return await showUIAndWaitForCompletion(tabKey, ceremony);
+}
+
+function handlePreNegotiateFailed(message, sender) {
+  const tabKey = String(sender.tab.id);
+  const ceremony = ceremonies.get(tabKey);
+
+  if (ceremony) {
+    ceremonies.delete(tabKey);
+  }
+}
+
+async function showUIAndWaitForCompletion(tabKey, ceremony) {
+  // Create a promise that the popup will resolve
+  const resultPromise = new Promise((resolve, reject) => {
+    ceremony.resolve = resolve;
+    ceremony.reject = reject;
+  });
+
+  // Store ceremony info for popup to read (message passing may be blocked)
+  await browser.storage.local.set({
+    activeCeremony: {
+      tabId: ceremony.tabId,
+      origin: ceremony.origin,
+      sessionId: ceremony.sessionId,
+      negotiateUrl: ceremony.negotiateUrl
+    }
+  });
+
+  // Open window for trusted UI
+  // Using 'normal' instead of 'popup' so tiling WMs can manage it
+  browser.windows.create({
+    url: 'popup.html',
+    type: 'normal',
+    width: 450,
+    height: 550
+  });
+
+  // Wait for completion
+  return await resultPromise;
 }
 
 async function handleComplete(tabId, pairingCode) {

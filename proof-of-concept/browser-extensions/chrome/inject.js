@@ -16,9 +16,23 @@
 
   // Listen for responses from content script
   window.addEventListener('oob-binding-response', (event) => {
-    const { id, result, error } = event.detail;
+    const { id, result, error, type, session } = event.detail;
     const pending = pendingRequests.get(id);
-    if (pending) {
+    if (!pending) return;
+
+    if (type === 'pre-negotiate-ready') {
+      // Extension has completed handshake + initialize, now run preNegotiate callback
+      pending.runPreNegotiate(session);
+    } else if (type === 'final-result') {
+      // Final result from the ceremony
+      pendingRequests.delete(id);
+      if (error) {
+        pending.reject(new Error(error));
+      } else {
+        pending.resolve(result);
+      }
+    } else {
+      // Legacy: simple response without pre-negotiation
       pendingRequests.delete(id);
       if (error) {
         pending.reject(new Error(error));
@@ -29,17 +43,37 @@
   });
 
   const outOfBandBinding = {
-    request(options) {
+    request(options, callbacks = {}) {
       return new Promise((resolve, reject) => {
         const id = ++requestId;
-        pendingRequests.set(id, { resolve, reject });
+        const hasPreNegotiate = typeof callbacks.preNegotiate === 'function';
 
-        window.dispatchEvent(new CustomEvent('oob-binding-request', {
-          detail: {
-            id,
-            origin: window.location.origin,
-            options
+        const pending = {
+          resolve,
+          reject,
+          runPreNegotiate: async (session) => {
+            try {
+              // Run the page's pre-negotiation callback
+              await callbacks.preNegotiate(session);
+
+              // Signal extension to continue with UI
+              window.dispatchEvent(new CustomEvent('oob-binding-request', {
+                detail: { id, type: 'pre-negotiate-complete' }
+              }));
+            } catch (err) {
+              // Pre-negotiation failed, abort
+              window.dispatchEvent(new CustomEvent('oob-binding-request', {
+                detail: { id, type: 'pre-negotiate-failed', error: err.message }
+              }));
+            }
           }
+        };
+        pendingRequests.set(id, pending);
+
+        // Note: We do NOT send origin here. The service worker derives origin
+        // from sender.tab.url to prevent spoofing by malicious pages.
+        window.dispatchEvent(new CustomEvent('oob-binding-request', {
+          detail: { id, type: 'start', options, hasPreNegotiate }
         }));
       });
     }

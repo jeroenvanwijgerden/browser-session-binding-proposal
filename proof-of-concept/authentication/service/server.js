@@ -114,24 +114,43 @@ async function handler(req, res) {
   // OOB Protocol Endpoints
   // ==========================================================================
 
-  // Step 1: Handshake - negotiate cryptographic algorithm
+  // Step 1: Handshake - negotiate cryptographic algorithm and validate origin
   if (method === 'POST' && url.pathname === '/bind/handshake') {
     const body = await parseBody(req);
+    const requestingOrigin = body.requesting_origin;
+    console.log(`[${timestamp()}] HANDSHAKE: requesting_origin: ${requestingOrigin}`);
     console.log(`[${timestamp()}] HANDSHAKE: offered algorithms: ${body.algorithms?.join(', ')}`);
-    if (body.algorithms?.includes('Ed25519')) {
-      console.log(`[${timestamp()}] HANDSHAKE: accepted Ed25519, pairing code enabled (2 digits)`);
-      return json(res, {
-        type: 'accepted',
-        algorithm: 'Ed25519',
-        pairing_code_specification: {
-          type: 'enabled',
-          characters: ['0','1','2','3','4','5','6','7','8','9'],
-          length: 2
-        }
-      });
+
+    // Collect rejection reasons (if any)
+    const reasons = [];
+
+    // For this PoC, we accept localhost origins (same-origin policy for auth services)
+    // In production, this would check against allowed origins
+    if (requestingOrigin && !requestingOrigin.startsWith('http://localhost')) {
+      reasons.push('origin_not_allowed');
+      console.log(`[${timestamp()}] HANDSHAKE: origin rejected (not localhost)`);
     }
-    console.log(`[${timestamp()}] HANDSHAKE: rejected (no compatible algorithm)`);
-    return json(res, { type: 'rejected' });
+
+    if (!body.algorithms?.includes('Ed25519')) {
+      reasons.push('no_compatible_algorithm');
+      console.log(`[${timestamp()}] HANDSHAKE: no compatible algorithm`);
+    }
+
+    if (reasons.length > 0) {
+      console.log(`[${timestamp()}] HANDSHAKE: rejected (${reasons.join(', ')})`);
+      return json(res, { type: 'rejected', reasons });
+    }
+
+    console.log(`[${timestamp()}] HANDSHAKE: accepted Ed25519, pairing code enabled (2 digits)`);
+    return json(res, {
+      type: 'accepted',
+      algorithm: 'Ed25519',
+      pairing_code_specification: {
+        type: 'enabled',
+        characters: ['0','1','2','3','4','5','6','7','8','9'],
+        length: 2
+      }
+    });
   }
 
   // Step 2: Initialize - create session, receive browser's public key

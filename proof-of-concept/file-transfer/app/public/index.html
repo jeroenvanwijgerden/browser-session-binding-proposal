@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Transfer - App</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 500px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #1a1a2e;
+      color: #eee;
+    }
+    h1 { color: #fff; }
+    .card {
+      background: #16213e;
+      border-radius: 8px;
+      padding: 24px;
+      margin: 20px 0;
+    }
+    button {
+      background: #e94560;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+      width: 100%;
+      margin-top: 12px;
+    }
+    button:hover { background: #d63050; }
+    button:disabled { background: #555; cursor: not-allowed; }
+    input, textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #444;
+      border-radius: 6px;
+      font-size: 14px;
+      background: #0f0f23;
+      color: #eee;
+      margin: 8px 0;
+    }
+    textarea {
+      height: 80px;
+      font-family: monospace;
+      resize: vertical;
+    }
+    label {
+      display: block;
+      margin-top: 16px;
+      color: #aaa;
+    }
+    .file-input-wrapper {
+      position: relative;
+      margin: 16px 0;
+    }
+    .file-input-wrapper input[type="file"] {
+      position: absolute;
+      opacity: 0;
+      width: 100%;
+      height: 100%;
+      cursor: pointer;
+    }
+    .file-input-label {
+      display: block;
+      padding: 20px;
+      border: 2px dashed #444;
+      border-radius: 8px;
+      text-align: center;
+      color: #888;
+      transition: all 0.2s;
+    }
+    .file-input-label:hover {
+      border-color: #e94560;
+      color: #e94560;
+    }
+    .file-input-label.has-file {
+      border-color: #4ecca3;
+      color: #4ecca3;
+    }
+    .status {
+      padding: 12px;
+      border-radius: 6px;
+      margin: 16px 0;
+      text-align: center;
+    }
+    .status.info { background: #1a3a5c; color: #7ec8e3; }
+    .status.success { background: #1a3c2c; color: #4ecca3; }
+    .status.error { background: #3c1a2c; color: #e94560; }
+    .pairing-code {
+      font-size: 48px;
+      font-weight: bold;
+      text-align: center;
+      color: #4ecca3;
+      padding: 20px;
+      background: #0f0f23;
+      border-radius: 8px;
+      letter-spacing: 16px;
+      margin: 16px 0;
+    }
+    .progress {
+      height: 8px;
+      background: #0f0f23;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 16px 0;
+    }
+    .progress-bar {
+      height: 100%;
+      background: #4ecca3;
+      transition: width 0.3s;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h1>Send File</h1>
+  <p>Send a file to a browser using the OOB binding protocol.</p>
+
+  <!-- Step 1: Select file and enter session info -->
+  <div id="setup-section" class="card">
+    <h2>1. Select file</h2>
+    <div class="file-input-wrapper">
+      <input type="file" id="file-input" onchange="fileSelected()">
+      <label class="file-input-label" id="file-label">
+        Click or drop a file here
+      </label>
+    </div>
+
+    <h2>2. Paste session info from browser</h2>
+    <textarea id="session-info" placeholder='{"url": "...", "session": "..."}'></textarea>
+
+    <button id="upload-btn" onclick="startUpload()" disabled>Upload</button>
+  </div>
+
+  <!-- Step 2: Show pairing code -->
+  <div id="pairing-section" class="card hidden">
+    <h2>Enter this code in the browser:</h2>
+    <div class="pairing-code" id="pairing-code">--</div>
+    <div class="status info" id="upload-status">Waiting to start upload...</div>
+    <div class="progress">
+      <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+    </div>
+  </div>
+
+  <!-- Step 3: Done -->
+  <div id="done-section" class="card hidden">
+    <div class="status success">File sent successfully!</div>
+    <button onclick="reset()">Send another file</button>
+  </div>
+
+  <script>
+    let selectedFile = null;
+
+    function fileSelected() {
+      const input = document.getElementById('file-input');
+      const label = document.getElementById('file-label');
+      const btn = document.getElementById('upload-btn');
+
+      if (input.files.length > 0) {
+        selectedFile = input.files[0];
+        label.textContent = `${selectedFile.name} (${formatBytes(selectedFile.size)})`;
+        label.classList.add('has-file');
+        checkReady();
+      }
+    }
+
+    function checkReady() {
+      const sessionInfo = document.getElementById('session-info').value.trim();
+      const btn = document.getElementById('upload-btn');
+      btn.disabled = !selectedFile || !sessionInfo;
+    }
+
+    document.getElementById('session-info').addEventListener('input', checkReady);
+
+    async function startUpload() {
+      const sessionInfoText = document.getElementById('session-info').value.trim();
+
+      let sessionInfo;
+      try {
+        sessionInfo = JSON.parse(sessionInfoText);
+      } catch (e) {
+        alert('Invalid session info. Please paste the JSON from the browser.');
+        return;
+      }
+
+      // Accept both field name formats:
+      // Extension outputs: {"url": "...", "session": "..."}
+      // Also accept: {"negotiateUrl": "...", "sessionId": "..."}
+      const sessionId = sessionInfo.session || sessionInfo.sessionId;
+      const negotiateUrl = sessionInfo.url || sessionInfo.negotiateUrl;
+      if (!sessionId || !negotiateUrl) {
+        alert('Missing session/sessionId or url/negotiateUrl in session info.');
+        return;
+      }
+
+      // Hide setup, show pairing section
+      document.getElementById('setup-section').classList.add('hidden');
+      document.getElementById('pairing-section').classList.remove('hidden');
+
+      try {
+        // Call negotiate with file metadata
+        const negotiateRes = await fetch(negotiateUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId,
+            fileName: selectedFile.name,
+            fileSize: selectedFile.size,
+            fileType: selectedFile.type || 'application/octet-stream'
+          })
+        });
+
+        const negotiateData = await negotiateRes.json();
+
+        if (negotiateData.error) {
+          throw new Error(negotiateData.error);
+        }
+
+        // Show pairing code
+        document.getElementById('pairing-code').textContent = negotiateData.pairing_code;
+        document.getElementById('upload-status').textContent = 'Enter the code in the browser. Upload will complete when browser receives the file...';
+
+        // Start upload immediately - it will block until browser connects and receives file
+        await uploadFile(negotiateData.upload_url, negotiateData.upload_secret);
+
+        // Done!
+        document.getElementById('pairing-section').classList.add('hidden');
+        document.getElementById('done-section').classList.remove('hidden');
+
+      } catch (err) {
+        document.getElementById('upload-status').className = 'status error';
+        document.getElementById('upload-status').textContent = 'Error: ' + err.message;
+      }
+    }
+
+    async function uploadFile(uploadUrl, uploadSecret) {
+      return new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            const percent = (e.loaded / e.total) * 100;
+            document.getElementById('progress-bar').style.width = percent + '%';
+            document.getElementById('upload-status').textContent =
+              `Uploading... ${formatBytes(e.loaded)} / ${formatBytes(e.total)}`;
+          }
+        };
+
+        xhr.onload = () => {
+          if (xhr.status === 200) {
+            resolve();
+          } else {
+            reject(new Error(`Upload failed: ${xhr.status}`));
+          }
+        };
+
+        xhr.onerror = () => reject(new Error('Network error'));
+
+        xhr.open('POST', uploadUrl);
+        xhr.setRequestHeader('X-Upload-Secret', uploadSecret);
+        xhr.send(selectedFile);
+      });
+    }
+
+    function reset() {
+      selectedFile = null;
+      document.getElementById('file-input').value = '';
+      document.getElementById('file-label').textContent = 'Click or drop a file here';
+      document.getElementById('file-label').classList.remove('has-file');
+      document.getElementById('session-info').value = '';
+      document.getElementById('upload-btn').disabled = true;
+      document.getElementById('progress-bar').style.width = '0%';
+      document.getElementById('upload-status').className = 'status info';
+      document.getElementById('upload-status').textContent = 'Waiting to start upload...';
+      document.getElementById('pairing-code').textContent = '--';
+
+      document.getElementById('setup-section').classList.remove('hidden');
+      document.getElementById('pairing-section').classList.add('hidden');
+      document.getElementById('done-section').classList.add('hidden');
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+  </script>
+</body>
+</html>

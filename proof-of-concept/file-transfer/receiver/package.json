@@ -1,0 +1,9 @@
+{
+  "name": "file-transfer-receiver",
+  "version": "1.0.0",
+  "description": "File transfer receiver webpage - demonstrates cross-origin OOB binding",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

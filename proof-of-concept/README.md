@@ -2,13 +2,33 @@
 
 > Disclaimer: The source code of this proof of concept was written entirely by a large language model.
 
-This proof of concept demonstrates the OOB session binding protocol with three components:
+This proof of concept demonstrates the OOB session binding protocol with two use cases:
 
-1. **Service** - A web server with login page and protocol endpoints (port 3000)
-2. **App** - A companion app simulator with passkey storage (port 3001)
-3. **Browser Extensions** - Firefox and Chrome extensions providing the `navigator.outOfBandBinding` API
+1. **Authentication** - Cross-device login using passkeys
+2. **File Transfer** - Streaming file transfer from phone to browser
 
-## Quick Start
+Both use cases use the same binding protocol; the difference is what gets negotiated and delivered.
+
+## Directory Structure
+
+```
+proof-of-concept/
+├── authentication/       # Cross-device login PoC
+│   ├── service/          # Login page + protocol endpoints (port 3000)
+│   └── app/              # Companion app simulator (port 3001)
+├── file-transfer/        # File transfer PoC
+│   ├── service/          # File receiver + streaming relay (port 3000)
+│   └── app/              # File sender simulator (port 3001)
+└── browser-extensions/
+    ├── chrome/           # Chrome extension (Manifest V3)
+    └── firefox/          # Firefox extension (Manifest V2)
+```
+
+---
+
+## Authentication PoC
+
+### Quick Start
 
 Requirements:
 - Node.js (tested on version 22.16.0)
@@ -16,20 +36,20 @@ Requirements:
   - Firefox (tested on version 134.0.2)
   - Chrome (tested on version 140.0.7339.207)
 
-### 1. Start the Service
+#### 1. Start the Service
 
 ```bash
-cd service
+cd authentication/service
 npm install
 node server.js
 ```
 
 The service runs on http://localhost:3000 with a REPL for inspecting state.
 
-### 2. Start the App
+#### 2. Start the App
 
 ```bash
-cd app
+cd authentication/app
 npm install
 node server.js
 ```
@@ -38,7 +58,7 @@ The companion app runs on http://localhost:3001.
 
 > **Why a server?** The app is just static HTML/JS, but WebAuthn requires a [secure context](https://developer.mozilla.org/en-US/docs/Web/Security/Secure_Contexts) (localhost or HTTPS). Opening the HTML file directly (`file://`) won't work.
 
-### 3. Install a Browser Extension
+#### 3. Install a Browser Extension
 
 **Firefox:**
 1. Open `about:debugging#/runtime/this-firefox`
@@ -50,7 +70,7 @@ The companion app runs on http://localhost:3001.
 2. Enable Developer mode
 3. Click "Load unpacked" and select `browser-extensions/chrome`
 
-## Demo Flow
+### Demo Flow
 
 1. Open http://localhost:3001 (companion app) and register a passkey with username and service URL `http://localhost:3000`
 
@@ -66,9 +86,7 @@ The companion app runs on http://localhost:3001.
 
 7. The login page shows "Logged in as [username]"
 
-## What's Implemented
-
-This PoC implements the core protocol from the proposal:
+### What's Implemented
 
 **Protocol Endpoints:**
 - `POST /bind/handshake` - Algorithm negotiation (Ed25519)
@@ -91,36 +109,59 @@ This PoC implements the core protocol from the proposal:
 - Full signature verification (simplified for demo)
 - Production-ready error handling
 
-## Interesting Flows to Try
+### Interesting Flows to Try
 
-### Happy Path
+#### Happy Path
 The normal flow described in "Demo Flow" above.
 
-### Compromised Session Detection
+#### Compromised Session Detection
 1. Start a login flow on the service page
 2. Copy the session info to **two** companion app browser tabs
 3. Load the session and negotiate in the first tab - get pairing code
 4. Try to negotiate in the second tab - you'll see a "COMPROMISED" warning
 5. The service REPL shows the compromise detection in logs
 
-### Session Expiration
+#### Session Expiration
 1. Start a login flow and copy the session info
 2. In the service REPL, run `sessions` to see active sessions
 3. Run `expire('<session-id>')` or `expireAll()` to expire sessions
 4. Try to complete the flow - you'll get a "session expired" error
 
-### Multiple Identities
+#### Multiple Identities
 1. Register multiple passkeys in the companion app (same or different service URLs)
 2. When you load a session, you can choose which identity to authenticate as
 3. The passkey table shows all registered credentials
 
-## Directory Structure
+---
 
+## File Transfer PoC
+
+Demonstrates the protocol for file transfer, where the negotiated result is streaming connection info rather than static data.
+
+### Quick Start
+
+```bash
+# Terminal 1 - Service (port 3000)
+cd file-transfer/service
+npm start
+
+# Terminal 2 - App (port 3001)
+cd file-transfer/app
+npm start
 ```
-proof-of-concept/
-├── service/          # Login page + protocol endpoints
-├── app/              # Companion app simulator
-└── browser-extensions/
-    ├── chrome/       # Chrome extension (Manifest V3)
-    └── firefox/      # Firefox extension (Manifest V2)
-```
+
+### Demo Flow
+
+1. Open http://localhost:3000 in a browser
+2. Open http://localhost:3001 in another tab (simulating the phone app)
+3. In the browser: click "Receive file from app"
+4. In the app: select a file, paste the session info, click "Upload"
+5. In the app: note the pairing code
+6. In the browser: enter the pairing code
+7. In the browser: click "Download file" to verify the transfer worked
+
+### Key Difference
+
+In authentication, the negotiated result is a session token (static data).
+
+In file transfer, the negotiated result is connection info for a live streaming session. The service acts as a buffered relay between the app (uploader) and browser (downloader), with minimal memory footprint.

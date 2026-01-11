@@ -13,28 +13,85 @@ script.src = browser.runtime.getURL('inject.js');
 script.onload = () => script.remove();
 (document.head || document.documentElement).appendChild(script);
 
+// Track pending requests that need pre-negotiation
+const pendingPreNegotiations = new Map();
+
 // Listen for requests from the page
 window.addEventListener('oob-binding-request', async (event) => {
-  const { id, origin, options } = event.detail;
+  const detail = event.detail;
 
-  try {
-    // Forward to background script
-    const result = await browser.runtime.sendMessage({
-      type: 'binding-request',
+  if (detail.type === 'start') {
+    // Initial request - forward to background script
+    const { id, options, hasPreNegotiate } = detail;
+
+    try {
+      // Forward to background script
+      // Note: We do NOT forward origin from page context - the background script
+      // derives it from sender.tab.url to prevent spoofing.
+      const result = await browser.runtime.sendMessage({
+        type: 'binding-request',
+        id,
+        options,
+        hasPreNegotiate
+      });
+
+      if (result.type === 'pre-negotiate-ready') {
+        // Background script completed handshake + initialize, waiting for pre-negotiation
+        pendingPreNegotiations.set(id, true);
+        // FIREFOX QUIRK: Must use cloneInto() to make the event detail accessible
+        // to the page context.
+        window.dispatchEvent(new CustomEvent('oob-binding-response', {
+          detail: cloneInto({ id, type: 'pre-negotiate-ready', session: result.session }, window)
+        }));
+      } else {
+        // No pre-negotiation, this is the final result
+        window.dispatchEvent(new CustomEvent('oob-binding-response', {
+          detail: cloneInto({ id, result }, window)
+        }));
+      }
+    } catch (error) {
+      window.dispatchEvent(new CustomEvent('oob-binding-response', {
+        detail: cloneInto({ id, error: error.message }, window)
+      }));
+    }
+
+  } else if (detail.type === 'pre-negotiate-complete') {
+    // Page finished pre-negotiation, tell background script to continue
+    const { id } = detail;
+
+    if (!pendingPreNegotiations.has(id)) return;
+    pendingPreNegotiations.delete(id);
+
+    try {
+      const result = await browser.runtime.sendMessage({
+        type: 'pre-negotiate-complete',
+        id
+      });
+
+      window.dispatchEvent(new CustomEvent('oob-binding-response', {
+        detail: cloneInto({ id, type: 'final-result', result }, window)
+      }));
+    } catch (error) {
+      window.dispatchEvent(new CustomEvent('oob-binding-response', {
+        detail: cloneInto({ id, type: 'final-result', error: error.message }, window)
+      }));
+    }
+
+  } else if (detail.type === 'pre-negotiate-failed') {
+    // Page's pre-negotiation failed, abort
+    const { id, error } = detail;
+
+    if (!pendingPreNegotiations.has(id)) return;
+    pendingPreNegotiations.delete(id);
+
+    await browser.runtime.sendMessage({
+      type: 'pre-negotiate-failed',
       id,
-      origin,
-      options
+      error
     });
 
-    // FIREFOX QUIRK: Must use cloneInto() to make the event detail accessible
-    // to the page context. Without this, the page gets "Permission denied"
-    // when trying to read the result.
     window.dispatchEvent(new CustomEvent('oob-binding-response', {
-      detail: cloneInto({ id, result }, window)
-    }));
-  } catch (error) {
-    window.dispatchEvent(new CustomEvent('oob-binding-response', {
-      detail: cloneInto({ id, error: error.message }, window)
+      detail: cloneInto({ id, type: 'final-result', error }, window)
     }));
   }
 });

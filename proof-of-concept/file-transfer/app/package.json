@@ -1,0 +1,9 @@
+{
+  "name": "file-transfer-app",
+  "version": "1.0.0",
+  "description": "File Transfer App PoC - companion app simulator",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

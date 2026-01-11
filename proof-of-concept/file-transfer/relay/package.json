@@ -1,0 +1,9 @@
+{
+  "name": "file-transfer-relay",
+  "version": "1.0.0",
+  "description": "File transfer relay service - cross-origin OOB binding demo",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

@@ -18,42 +18,13 @@ This disclosure is provided in the interest of transparency.
 
 ## Abstract
 
-What instigated this proposal was the desire to have highly secure cross-device authentication using passkeys, with a UX similar to existing cross-device authentication, but without requiring the permission of platform vendors. The proposed protocol succeeds in this; a proof of concept is available [here]([url redacted for now]). Note that the proposal does not compete with passkeys; it offers infrastructure for it. In fact, the protocol is agnostic about passkeys, and even agnostic about authentication.
+This proposal enables the use of passkeys for cross-device authentication without vendor permission or lock-in. The proposed protocol is highly secure and has a similar UX to existing cross-device authentication. A proof of concept is available [here]([url redacted for now]). This proposal does not compete with passkeys; it offers infrastructure for it. In fact, the protocol is agnostic about passkeys, and even agnostic about authentication.
 
-This proposal describes infrastructure for a browser to securely fetch a result (such as a JWT) negotiated by a companion app and a service, where a user controls both the browser and the app. Any complying browser, app and service can participate. Besides authentication, possible applications include document signing, device provisioning and session transfer.
+The infrastructure enables a browser to securely fetch a result (such as a JWT) negotiated by a companion app and a service, where a user controls both the browser and the app. Besides authentication, possible uses include live file transfer, for which a proof of concept is available [here]([url redacted for now]).
 
-
-
-The goal of this proposal is to make freely available and greatly lower the barrier of entry to cross-device modern web security. Of particular note--given recent trends--is that the proposal describes infrastructure that facilitates vendor-independent cross-device use of any authorization protocol, including passkeys. A proof of concept for vendor-independent cross-device login using passkeys is available .
-
-Any service wishing to offer highly secure cross-device authentication would be required only to implement four moderately simple HTTPS endpoints. No longer required would be either a proprietary application for the companion device or permission from vendors. The companion application could be third-party, like existing authentication apps. The required steps for a user would be comparable to currently existing cross-device authentication, like scanning a QR code followed by entering a pairing code. 
+Any complying browser, app, and service can participate. For many applications requiring secure cross-device operations, this proposal eliminates the need for a proprietary app. Instead, a service would implement four moderately simple endpoints. These endpoints could be offered as a standard container.
 
 
-
-To facilitate this, this proposal would enable a browser to fetch a result negotiated by an app and a service (such as a JWT), where a user controls both the browser and the app.
-
-The proposed protocol is agnostic about the protocol used by the companion app and the service for their negotiation. It is also agnostic about the negotiated result. This makes the proposal infrastructure not only for authentication, but any operation where a companion app negotiates with a service (such as document signing, payment authorization, or device provisioning).
-
-The proposed protocol is also agnostic about the 
-
-The companion application could be provided in the same way    
-
-The protocol is not tied specifically to authentication. 
-
-To reap the benefits of highly secure cross-device   It would be possible for any combination of three compliant web browser
-
-It introduces a moderately small and straightforward protocol that would allow any 
-
-This proposal was created as a response to the recent push for passkeys--not as an alternative, but infrastructure (not tied to passkeys or even authentication) to make passkey 
-Secure cross-device authentication on the web is gatekept: by platform vendors who control passkey infrastructure, or by resource requirements that put dedicated companion apps out of reach.
-
-This proposal describes browser-native infrastructure for securely binding out-of-band operations to browser sessions. When a user performs an operation on a companion device (such as a mobile phone), the result of that operation can be securely delivered to a specific browser session.
-
-The protocol is agnostic to what is being bound. Authentication is the primary use case; others include document signing, payment authorization, device provisioning, and session transfer. The protocol provides the secure binding layer; the semantics of what is bound are determined by the service and companion application. This is infrastructure, not an authentication protocol.
-
-The protocol is designed to be implementable by any service without platform vendor permission or specialized expertise, and without the need for a proprietary companion application. By providing simple, well-defined infrastructure, this proposal democratizes access to secure cross-device operations; any service that can implement four HTTPS endpoints can participate.
-
-A proof of concept demonstrating this proposal—including browser extensions for Chrome and Firefox, a service with protocol endpoints, and a companion app simulator—is available at [redacted for now].
 
 **Note on specifics:** This proposal focuses on the security model and protocol design. The specific API names, field names, parameter bounds, and wire formats are illustrative suggestions to make the design concrete and get a discussion going.
 
@@ -114,7 +85,8 @@ A proof of concept demonstrating this proposal—including browser extensions fo
   - [10.3 Payment Authorization](#103-payment-authorization)
   - [10.4 Device Provisioning](#104-device-provisioning)
   - [10.5 Session Transfer](#105-session-transfer)
-  - [10.6 Implementation Considerations for Use Cases](#106-implementation-considerations-for-use-cases)
+  - [10.6 File Transfer](#106-file-transfer)
+  - [10.7 Implementation Considerations for Use Cases](#107-implementation-considerations-for-use-cases)
 - [11. Implementation Considerations](#11-implementation-considerations)
   - [11.1 Service Endpoint Specifications](#111-service-endpoint-specifications)
   - [11.2 Cryptographic Requirements](#112-cryptographic-requirements)
@@ -182,12 +154,12 @@ The flow: A web page requests a browser-native UI. The browser starts a session 
 - Users no longer need a different app per service
 - Secure cross-device authentication becomes accessible to any service, not just well-resourced ones
 
-**Key mechanisms.** Browser-native UI is sandboxed from web page. The web page supplies partial URLs, completed by the browser based on web page origin. Session hijacking is prevented by public key sharing upon initialization. The QR code can be stolen by design; in case of multiple negotiations, the user is informed of a compromised environment, and the session is voided. The combination of multi-negotiation detection (can only continue in case of a single negotiation) and the pairing code (can only continue after the user's app has negotiated) prevents session fixation.
+**Key mechanisms.** Browser-native UI is sandboxed from web page. The browser reports the page's origin to the server; the server decides whether to accept (enabling server-controlled phishing resistance). Session hijacking is prevented by public key sharing upon initialization. The QR code can be stolen by design; in case of multiple negotiations, the user is informed of a compromised environment, and the session is voided. The combination of multi-negotiation detection (can only continue in case of a single negotiation) and the pairing code (can only continue after the user's app has negotiated) prevents session fixation.
 
 **Adoption.** Major browser vendors have structural incentives to resist this proposal—it commoditizes their platform lock-in. However, adoption does not require their initial cooperation. Browser extensions can provide the full security guarantees of native implementation. An ecosystem-driven path is viable: a trusted open-web organization publishes audited extensions for major browsers, credential managers (password managers, authenticators) add companion app support, and services implement the four endpoints. Once a working ecosystem demonstrates viability and user demand, browser vendors face pressure to implement natively—or regulatory bodies (such as the EU under eIDAS 2.0, or similar initiatives elsewhere) may mandate it. This creates an opportunity for any pro-open-web organization to become a lynchpin in breaking platform lock-in. The protocol complements passkeys rather than competing with them; the proof of concept uses passkeys for authentication.
 
 **Properties:**
-- **Phishing-resistant.** Browser enforces same-origin; attackers can only bind to their own origin.
+- **Phishing-resistant (server-controlled).** Browser reports the requesting origin; servers decide whether to accept. For same-origin services, attackers can only bind to their own origin.
 - **Session hijacking prevention.** Public key cryptography ensures only the browser that initialized can complete—the private key never leaves the browser.
 - **Over-the-shoulder protection (optional).** When the pairing code is enabled, an attacker who can see the user's screen can only void the ceremony, never hijack it or bind their own session to the user's browser.
 - **Platform-neutral.** Any compliant browser, app, and service can participate. No vendor permission required.
@@ -240,7 +212,7 @@ This proposal decouples secure cross-device binding from dedicated apps. It prov
 
 The result: secure cross-device authentication becomes accessible to any service, and users get a consistent experience with a single companion app instead of app-per-service fragmentation.
 
-Importantly, this proposal opens doors without closing existing ones. Services that have invested in dedicated companion apps can continue using them. But services that implement the protocol's backend endpoints gain a new option: any compliant third-party app—a password manager, authenticator, or general-purpose companion app—will work. Users gain choice; services gain flexibility.
+This proposal is additive. Services that have invested in dedicated companion apps can continue using them. But services that implement the protocol's backend endpoints gain a new option: any compliant third-party app—a password manager, authenticator, or general-purpose companion app—will work.
 
 ### 1.4 What This Protocol Is
 
@@ -328,8 +300,8 @@ interface OutOfBandBinding {
 };
 
 dictionary BindingRequest {
-  // Endpoint paths (MUST be same-origin; combined with page origin by user agent)
-  // Each path MUST NOT exceed 2048 characters
+  // Endpoint URLs: either relative paths (resolved against page origin) or full URLs
+  // Each endpoint MUST NOT exceed 2048 characters
   required USVString handshakeEndpoint;   // Browser calls this to negotiate algorithm
   required USVString initializeEndpoint;  // Browser calls this to initialize ceremony
   required USVString negotiateEndpoint;   // App calls this to negotiate
@@ -371,13 +343,18 @@ enum BindingResultStatus {
 };
 ```
 
-**Same-origin requirement.** The endpoint paths MUST be interpreted relative to the requesting page's origin. The user agent constructs full URLs by combining these paths with the page origin. Cross-origin endpoints are not permitted.
+**Endpoint URL handling.** Endpoints can be specified as either:
+- **Relative paths** (e.g., `/bind/handshake`): The user agent resolves these against the page's origin
+- **Full URLs** (e.g., `https://api.example.com/bind/handshake`): Used as-is
 
-This constraint is fundamental to phishing resistance. If a page at `https://evil.com` could specify endpoints at `https://bank.com`, an attacker could initiate bindings that appear to be for the bank. By enforcing same-origin, the protocol guarantees that all operations occur against the origin that initiated the request.
+The user agent always includes the `requesting_origin` (the page's origin) in the handshake request. The server decides whether to accept the request based on its own policy. This allows:
+- **Same-origin services**: Accept only when `requesting_origin` matches the service origin (phishing-resistant)
+- **Subdomain services**: Accept requests from `*.example.com` for a service at `api.example.com`
+- **Cross-origin services**: Accept requests from any origin (e.g., a generic file relay service)
 
-Services that use separate API domains (e.g., `api.example.com` for a page on `example.com`) must either:
-- Serve the binding-initiating page from the API domain, or
-- Proxy the binding endpoints through the page's origin
+Phishing resistance is server-controlled, not browser-enforced. A bank's authentication service can require exact origin match; a file transfer relay can accept any origin. The browser's job is to honestly report the requesting origin; the server makes all policy decisions.
+
+**Cookie mode restriction.** When `completionMode` is `"cookie"`, all endpoints MUST resolve to the same origin as the page. The user agent MUST reject requests where cookie mode is specified but endpoints point to a different origin. Cookies cannot be set cross-origin. For cross-origin scenarios, use `"object"` or `"bytes"` mode instead
 
 **Field limits.** The following limits apply to `BindingRequest` fields:
 
@@ -573,7 +550,7 @@ QR codes have versions 1-40, with increasing capacity. The question: **Is QR cap
 
 The web page provides the `displayName`, `title`, and `description` shown in the trusted UI. This might seem dangerous--what if a malicious page provides misleading text?
 
-**This is safe because of the protocol's phishing resistance.**
+**This is safe because of server-controlled phishing resistance.**
 
 Consider a malicious page at `https://evil.com` that displays:
 
@@ -581,17 +558,15 @@ Consider a malicious page at `https://evil.com` that displays:
 - title: "Sign in to Your Bank"
 - description: "Scan with Your Bank app to sign in."
 
-The user agent displays this text, but also prominently shows the verified origin: `https://evil.com`. The transfer payload contains URLs pointing to `https://evil.com`. When the companion application receives the payload, it shows `https://evil.com` as the target.
+The user agent displays this text, but also prominently shows the verified origin: `https://evil.com`. When the browser sends the handshake request, it includes `requesting_origin: "https://evil.com"`.
 
-Even if the user ignores all warnings and proceeds:
+**If evil.com tries to use the bank's endpoints:** The bank's server receives the handshake with `requesting_origin: "https://evil.com"`. If the bank implements origin checking (which any phishing-sensitive service should), it rejects the request. The ceremony fails.
 
-1. The companion app contacts `https://evil.com`, not the real bank
-2. Any operations happen against `evil.com`
-3. `evil.com` receives only what it provides itself--not bank credentials
+**If evil.com uses its own endpoints:** The companion app shows `https://evil.com` as the requesting origin. Any operations happen against evil.com's service. Evil.com receives only what it provides itself—not bank credentials.
 
-**The blast radius of deceptive text is confined to the service's own origin.** A malicious service can confuse its own users, but cannot use this protocol to phish for credentials belonging to other origins.
+**The blast radius of deceptive text is confined to what the server allows.** For phishing-sensitive services (banks, authentication providers), origin checking rejects cross-origin requests. For cross-origin services (file relays), the requesting origin is displayed but not restricted—phishing protection is not relevant for these use cases.
 
-This is the same trust model as existing web content: a page can display any text it wants, including fake bank logos. The browser doesn't prevent this because the page can only affect its own origin. This protocol inherits that property.
+This is the same trust model as existing web content: a page can display any text it wants, including fake bank logos. The browser doesn't prevent this because it can't know what's a legitimate cross-origin service vs. a phishing attempt. The server makes that determination based on its origin policy.
 
 ---
 
@@ -657,25 +632,30 @@ The diagram below shows the full ceremony with the pairing code enabled. When th
 
 ### 5.2 Phase 1: Handshake
 
-Before generating keys or initializing a session, the browser and server must agree on a signature algorithm. The web page calls `navigator.outOfBandBinding.request()`. The user agent:
+Before generating keys or initializing a session, the browser and server must agree on a signature algorithm and the server must accept the requesting origin. The web page calls `navigator.outOfBandBinding.request()`. The user agent:
 
-1. Constructs the handshake endpoint URL by combining the path with the web page's origin
-2. Sends a handshake request containing the algorithms the browser supports (up to 16 algorithm names, each at most 16 characters)
+1. Resolves the handshake endpoint URL (relative paths are resolved against the page's origin; full URLs are used as-is)
+2. Sends a handshake request containing:
+   - The `requesting_origin`: the page's origin (e.g., `https://example.com`)
+   - The algorithms the browser supports (up to 16 algorithm names, each at most 16 characters)
 3. Receives either:
-   - **Accepted:** The server chose an algorithm from the browser's list, along with the pairing code configuration
-   - **Rejected:** The server does not support any of the browser's offered algorithms
+   - **Accepted:** The server accepts the requesting origin and chose an algorithm from the browser's list, along with the pairing code configuration
+   - **Rejected:** The server does not accept the requesting origin, or does not support any of the browser's offered algorithms
 
-If rejected, the user agent MUST display an error to the user indicating that the browser is not compatible with this service. The ceremony terminates.
+If rejected, the user agent MUST display an error to the user. The ceremony terminates.
 
 If accepted, the user agent proceeds to initialization using the agreed algorithm.
+
+**Origin policy is server-controlled.** The server decides whether to accept requests from the given `requesting_origin`. A same-origin authentication service might require exact match. A service on `api.example.com` might accept requests from `*.example.com`. A cross-origin file relay service might accept any origin. The browser honestly reports the origin; the server makes the policy decision.
 
 **Handshake request/response:**
 
 The service, upon receiving a handshake request:
 
-1. Examines the list of algorithms offered by the browser
-2. Selects an algorithm it supports (server's choice)
-3. Returns the selected algorithm and pairing code configuration
+1. Examines the `requesting_origin` and applies its origin policy (reject if not acceptable)
+2. Examines the list of algorithms offered by the browser
+3. Selects an algorithm it supports (server's choice)
+4. Returns the selected algorithm and pairing code configuration
 
 **Algorithm recommendations:** Implementations SHOULD support `ES256` (ECDSA P-256) and `Ed25519` to maximize interoperability. These algorithms are widely supported by WebCrypto implementations and provide strong security with reasonable performance.
 
@@ -684,7 +664,7 @@ The service, upon receiving a handshake request:
 The user agent, having completed the handshake:
 
 1. Generates an ephemeral key pair using the algorithm agreed during handshake
-2. Constructs the initialize endpoint URL by combining the path with the web page's origin
+2. Resolves the initialize endpoint URL (relative paths resolved against page origin; full URLs used as-is)
 3. Sends an initialization request to the initialize endpoint with the public key
 4. Receives the session ID from the service
 5. Only after successful initialization, displays trusted UI with:
@@ -1076,18 +1056,21 @@ Disabling the pairing code may be acceptable when:
 
 ### 7.2 Binding Integrity
 
-The user agent constructs endpoint URLs using its own knowledge of the page origin. A malicious page at `evil.com` cannot cause the user agent to generate a transfer payload pointing to `legitimate.com`. The companion application receives and displays the true origin.
+The user agent always includes the true `requesting_origin` (the page's origin) in the handshake request. For relative endpoint paths, the browser resolves them against the page origin. For full URLs, the browser uses them as-is but still reports the requesting origin. The server sees both the requesting origin and the endpoint origin, and can make policy decisions accordingly.
 
 ### 7.3 Phishing Resistance
 
-Even if the web page provides deceptive display text, the protocol prevents cross-origin attacks:
+Phishing resistance is server-controlled. The server decides whether to accept requests based on the `requesting_origin` reported by the browser:
 
-1. The transfer payload contains the true origin (`evil.com`)
-2. The companion app shows the true origin
-3. All operations occur against the true origin
-4. The attacker receives only results from their own service
+1. **Same-origin services** (e.g., bank login): Require `requesting_origin` to match the service origin. A phishing page at `evil.com` cannot use `bank.com`'s endpoints because the bank's server will reject the mismatched origin.
 
-A phishing page can only "phish" itself. This is the same security model as the web itself.
+2. **Subdomain services** (e.g., `api.example.com`): Accept requests where `requesting_origin` is within an allowed domain pattern (e.g., `*.example.com`).
+
+3. **Cross-origin services** (e.g., file relay): Accept any `requesting_origin`. Phishing resistance is not relevant for these use cases.
+
+The browser's job is to honestly report the requesting origin. The server makes all policy decisions. This model allows the same protocol to serve both phishing-sensitive use cases (authentication) and phishing-irrelevant use cases (file transfer) without compromising either.
+
+For same-origin services, a phishing page can only "phish" itself—the attacker receives only results from their own origin. This is the same security model as the web itself.
 
 ### 7.4 Session Hijacking Prevention
 
@@ -1146,9 +1129,9 @@ Each party has responsibilities. Incorrect implementations degrade security:
 
 | Party | Responsibility | If implemented incorrectly |
 |-------|----------------|---------------------------|
-| **Browser** | Generate secure ephemeral key pairs; render trusted UI that pages cannot manipulate; enforce same-origin; initialize before displaying QR; never expose private key | Weak key generation enables forgery; manipulable UI enables phishing; broken same-origin enables cross-origin attacks; early QR display defeats hijacking protection; leaked private key defeats all protection |
+| **Browser** | Generate secure ephemeral key pairs; render trusted UI that pages cannot manipulate; honestly report requesting origin; initialize before displaying QR; never expose private key | Weak key generation enables forgery; manipulable UI enables phishing; false origin reporting defeats server-side phishing protection; early QR display defeats hijacking protection; leaked private key defeats all protection |
 | **Companion App** | Display origin clearly; validate TLS | Hidden origin enables phishing; broken TLS enables MITM |
-| **Service** | Generate cryptographically random session IDs; store public keys correctly; verify signatures correctly; enforce expiration | Weak session IDs enable collision attacks; broken signature verification defeats hijacking protection |
+| **Service** | Generate cryptographically random session IDs; store public keys correctly; verify signatures correctly; enforce expiration; enforce origin policy (for phishing-sensitive use cases) | Weak session IDs enable collision attacks; broken signature verification defeats hijacking protection; missing origin validation enables phishing attacks |
 
 **This is the same trust model users already have.**
 
@@ -1216,7 +1199,13 @@ A new device displays a binding request. A management app (already authenticated
 
 A user is logged in on their phone and wants to continue on a desktop browser. The companion app authorizes the session transfer. The existing session is bound to the browser.
 
-### 10.6 Implementation Considerations for Use Cases
+### 10.6 File Transfer
+
+A user wants to send a file from their phone to a browser. The browser initiates the ceremony. The companion app scans the QR code and negotiates with the service, which creates a streaming session and returns connection info as the result. The browser receives the connection info and connects to the streaming endpoint. The service signals the app to begin streaming; the app streams the file through the service (acting as a relay) to the browser.
+
+This use case differs from the others: the bound result is not static data but connection info for a live session. The service acts as a buffered relay with minimal memory footprint—it forwards chunks as they arrive rather than storing the entire file.
+
+### 10.7 Implementation Considerations for Use Cases
 
 The protocol handles secure binding—it does not dictate what happens during negotiation. For each use case, implementers must consider:
 
@@ -1238,7 +1227,7 @@ The service implements four HTTP endpoints. A summary:
 
 | Endpoint | Caller | Purpose |
 |----------|--------|---------|
-| handshake | Browser | Negotiate signature algorithm, receive pairing_code_specification |
+| handshake | Browser | Report requesting_origin, negotiate signature algorithm, receive pairing_code_specification |
 | initialize | Browser | Send public_key, receive session_id |
 | negotiate | App | Perform operation, stage result, receive pairing_code (if enabled) |
 | complete | Browser | Retrieve result with signature (+ pairing_code if enabled) |
@@ -1374,7 +1363,7 @@ if (result.status === 'success') { /* proceed */ }
 The user agent implements:
 
 1. **API surface:** One method (`request()`) with straightforward parameters
-2. **Handshake:** HTTP request to handshake endpoint with supported algorithms, receive agreed algorithm and pairing code configuration
+2. **Handshake:** HTTP request to handshake endpoint with requesting origin and supported algorithms, receive agreed algorithm and pairing code configuration
 3. **Key generation:** Ephemeral key pair using agreed algorithm via WebCrypto API
 4. **Initialization:** HTTP request to initialize endpoint with public key, receive session_id
 5. **Trusted UI:** Modal display showing origin, service text, QR code, status, code input
@@ -1434,7 +1423,7 @@ The entire ceremony shares a single expiration deadline. When the deadline passe
 
 | Endpoint | Receives | Does | Returns |
 |----------|----------|------|---------|
-| handshake | algorithms[] | Select supported algorithm | algorithm, pairing_code_specification |
+| handshake | requesting_origin, algorithms[] | Validate origin policy, select supported algorithm | algorithm, pairing_code_specification |
 | initialize | public_key | Generate session_id, store public_key | session_id |
 | negotiate | session_id, operation data | Validate operation, stage result, generate pairing_code if enabled | pairing_code (if enabled) |
 | complete | session_id, signature, timestamp, [pairing_code] | Verify signature against stored public_key, validate code if enabled, return result | result_data |
@@ -1544,7 +1533,7 @@ Session IDs are single-use and short-lived. Signatures include timestamps to pre
 
 Each endpoint has a distinct caller and purpose:
 
-- **handshake**: Called by browser → server. Negotiates signature algorithm, receives pairing code configuration.
+- **handshake**: Called by browser → server. Reports requesting origin, negotiates signature algorithm, receives pairing code configuration.
 - **initialize**: Called by browser → server. Sends public key, receives session ID.
 - **negotiate**: Called by app → server. Performs the operation, stages result.
 - **complete**: Called by browser → server. Retrieves the result with signed proof of ownership.
@@ -1668,7 +1657,7 @@ This creates a viable adoption path that bypasses browser vendors entirely:
 
 4. **Critical mass creates pressure.** Once a working ecosystem demonstrates viability and user demand, browser vendors face a choice: implement natively (removing friction for users) or look obstructionist. The extension proves demand; native implementation just improves UX.
 
-This path creates an opportunity for any pro-open-web organization to become a lynchpin in breaking platform lock-in—a credible, audited, maintained extension backed by a trusted name.
+This path creates an opportunity for pro-open-web organizations to provide the ecosystem's trusted foundation—a credible, audited, maintained extension backed by a recognized name.
 
 Websites can detect and offer the capability regardless of whether it's provided by extension or native implementation:
 
@@ -1730,9 +1719,9 @@ The protocol is deliberately minimal and agnostic. It doesn't specify what is be
 
 The key innovation is establishing a cryptographic binding (via public key initialization) between browser and server *before* exposing the session identifier. This provides unconditional protection against session hijacking—no race conditions, no probabilistic defenses, no reliance on user behavior. The private key never leaves the browser; only the browser that initialized can complete the ceremony. An optional pairing code extends protection to session fixation attacks.
 
-The web needs this infrastructure. Currently, secure cross-device result delivery requires either platform gatekeeping (limiting who is *allowed* to participate) or specialized expertise (limiting who is *able* to participate). The result is an uneven security landscape where users of smaller services have fewer secure options.
+Currently, secure cross-device result delivery requires either platform gatekeeping (limiting who may participate) or specialized expertise (limiting who can participate). Users of smaller services have fewer secure options as a result.
 
-This protocol addresses both barriers. It is platform-neutral—any service can participate without vendor permission. It is implementation-accessible—the hard problems are solved once in the browser, leaving services with straightforward integration. By democratizing access to secure cross-device binding, it makes the web more secure for everyone, not just users of large, well-resourced services.
+This protocol addresses both barriers. It is platform-neutral—any service can participate without vendor permission. It is implementation-accessible—the hard problems are solved once in the browser, leaving services with straightforward integration work.
 
 ---
 
@@ -1787,7 +1776,7 @@ Servers MAY require additional headers (e.g., `Authorization`, `X-CSRF-Token`) a
 
 ### A.1 Handshake Endpoint
 
-Called by the browser before initialization to negotiate the signature algorithm and receive pairing code configuration.
+Called by the browser before initialization to negotiate the signature algorithm, report the requesting origin, and receive pairing code configuration.
 
 **Request:**
 ```
@@ -1798,12 +1787,15 @@ Content-Type: application/json
 
 ```json
 {
+  "requesting_origin": "https://example.com",
   "algorithms": ["ES256", "Ed25519"],
   "input_hints": {
     "keyboard_layout": "us"
   }
 }
 ```
+
+The `requesting_origin` field contains the origin of the web page that initiated the binding request. The server uses this to apply its origin policy—rejecting requests from unacceptable origins (see Section 7.3).
 
 The `algorithms` array contains the signature algorithms the browser supports, in order of preference. The array MUST contain at least 1 and at most 16 algorithm identifiers. Each identifier MUST NOT exceed 16 characters.
 
@@ -1847,13 +1839,32 @@ HTTP/1.1 200 OK
 Content-Type: application/json
 
 {
-  "type": "rejected"
+  "type": "rejected",
+  "reasons": ["origin_not_allowed"]
 }
 ```
 
-If the server does not support any of the browser's offered algorithms, it returns a rejected response. The browser MUST display an error to the user indicating that the browser is not compatible with this service.
+The server returns a rejected response if:
+- The `requesting_origin` is not acceptable per the server's origin policy, and/or
+- The server does not support any of the browser's offered algorithms
 
-**Algorithm identifiers:** Implementations SHOULD support `ES256` (ECDSA with P-256 and SHA-256) and `Ed25519` to maximize interoperability. Other common identifiers include `ES384`, `ES512`, and `Ed448`.
+The `reasons` array contains one or more of:
+- `"origin_not_allowed"` — the requesting origin is not acceptable
+- `"no_compatible_algorithm"` — no offered algorithm is supported
+
+The array allows the server to report multiple rejection reasons (e.g., both origin and algorithm issues). The browser MUST display an error to the user; the specific message may vary based on the reasons.
+
+**Algorithm identifiers:** The following table lists well-known algorithm identifiers. This list is non-exhaustive; implementations MAY support additional algorithms.
+
+| Identifier | Algorithm | Curve/Parameters | Notes |
+|------------|-----------|------------------|-------|
+| `ES256` | ECDSA | P-256 + SHA-256 | RECOMMENDED. Widely supported. |
+| `ES384` | ECDSA | P-384 + SHA-384 | |
+| `ES512` | ECDSA | P-521 + SHA-512 | |
+| `Ed25519` | EdDSA | Curve25519 | RECOMMENDED. Fast, constant-time. |
+| `Ed448` | EdDSA | Curve448 | Higher security margin. |
+
+Implementations SHOULD support at least `ES256` and `Ed25519` to maximize interoperability. These are widely supported by WebCrypto implementations and provide strong security with reasonable performance.
 
 ### A.2 Initialize Endpoint
 
@@ -1911,7 +1922,7 @@ Content-Type: application/json
 }
 ```
 
-The `status_url` field is **optional**. If present, it specifies a same-origin endpoint path that supports WebSocket or Server-Sent Events for push notifications (see Appendix B and C). If absent, the browser uses polling.
+The `status_url` field is **optional**. If present, it specifies an endpoint path (resolved the same way as other endpoints) that supports WebSocket or Server-Sent Events for push notifications (see Appendix B and C). If absent, the browser uses polling.
 
 The server generates the session_id and stores it along with the public_key and algorithm.
 
@@ -2079,7 +2090,7 @@ Set-Cookie: session=abc123; HttpOnly; Secure; SameSite=Strict
 }
 ```
 
-**Cookie mode and first-party status:** Because the complete endpoint is same-origin with the web page (enforced by the API), cookies set via `Set-Cookie` headers are first-party cookies. Third-party cookie restrictions do not affect this flow. The user agent processes these headers using standard browser cookie handling. Servers SHOULD use appropriate cookie attributes (`Secure`, `HttpOnly`, `SameSite`) per their security requirements.
+**Cookie mode and first-party status:** Cookie mode requires same-origin endpoints. The user agent rejects cookie mode requests where endpoints point to a different origin than the page (see Section 4.2). When endpoints are same-origin, cookies set via `Set-Cookie` headers are first-party cookies, and third-party cookie restrictions do not affect this flow. The user agent processes these headers using standard browser cookie handling. Servers SHOULD use appropriate cookie attributes (`Secure`, `HttpOnly`, `SameSite`) per their security requirements. For cross-origin services, use `object` or `bytes` completion mode instead.
 
 **The `compromised` field:** When present and set to `true`, this indicates that multiple devices attempted to negotiate for this session (see Section 5.7). The session completed successfully—the legitimate user entered the correct pairing code—but the QR code was intercepted by another device. The user agent MUST inform the user of this condition; the user should review their security and consider whether to trust the session.
 

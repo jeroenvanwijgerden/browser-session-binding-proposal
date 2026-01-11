@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>File Transfer - Receiver</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 600px;
+      margin: 40px auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 { color: #333; }
+    .origin-info {
+      background: #e8f4fd;
+      padding: 12px;
+      border-radius: 6px;
+      margin-bottom: 20px;
+      font-size: 14px;
+    }
+    .origin-info code {
+      background: #d0e8f7;
+      padding: 2px 6px;
+      border-radius: 3px;
+    }
+    .card {
+      background: white;
+      border-radius: 8px;
+      padding: 24px;
+      margin: 20px 0;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    button {
+      background: #0066cc;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 6px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    button:hover { background: #0055aa; }
+    button:disabled { background: #ccc; cursor: not-allowed; }
+    .hidden { display: none; }
+    .status {
+      padding: 8px 12px;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+    .status.waiting { background: #fff3cd; color: #856404; }
+    .status.success { background: #d4edda; color: #155724; }
+    .status.error { background: #f8d7da; color: #721c24; }
+    .file-info {
+      background: #e8f4fd;
+      padding: 16px;
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+    .file-info h3 { margin: 0 0 8px 0; color: #0066cc; }
+    .download-btn {
+      background: #28a745;
+      margin-top: 16px;
+    }
+    .download-btn:hover { background: #218838; }
+    .no-extension {
+      background: #fff3cd;
+      padding: 16px;
+      border-radius: 8px;
+      margin: 16px 0;
+    }
+  </style>
+</head>
+<body>
+  <h1>File Transfer PoC</h1>
+  <p>Receive files from your phone using the OOB binding protocol.</p>
+
+  <div class="origin-info">
+    <strong>Cross-origin demo:</strong> This page is served from <code>localhost:3000</code>
+    but communicates with the relay at <code>localhost:3002</code> (different origin).
+  </div>
+
+  <!-- No extension warning -->
+  <div id="no-extension" class="card hidden">
+    <div class="no-extension">
+      <strong>Browser extension required</strong>
+      <p>Please install the OOB Binding PoC extension to use this demo.</p>
+    </div>
+  </div>
+
+  <!-- Initial state -->
+  <div id="start-section" class="card">
+    <p>Click below to start receiving a file from your phone. The browser extension will open a window where you can enter the pairing code.</p>
+    <button id="start-btn" onclick="startTransfer()">Receive file from app</button>
+  </div>
+
+  <!-- Waiting state -->
+  <div id="waiting-section" class="card hidden">
+    <h2>Waiting for file...</h2>
+    <div class="status waiting">The extension window should be open. Complete the pairing there.</div>
+  </div>
+
+  <!-- Download section -->
+  <div id="download-section" class="card hidden">
+    <h2>File ready!</h2>
+    <div class="file-info" id="file-info"></div>
+    <button class="download-btn" id="download-btn" onclick="downloadFile()">Download file</button>
+    <p style="margin-top: 16px"><button onclick="reset()">Transfer another file</button></p>
+  </div>
+
+  <!-- Error section -->
+  <div id="error-section" class="card hidden">
+    <div class="status error" id="error-message"></div>
+    <button onclick="reset()">Try again</button>
+  </div>
+
+  <script>
+    // Cross-origin relay URL
+    const RELAY_URL = 'http://localhost:3002';
+
+    let downloadUrl = null;
+    let fileName = null;
+    let downloadKeyPair = null;  // Ephemeral keypair for secure download
+
+    // Check for extension (with retry since inject.js loads async)
+    document.addEventListener('DOMContentLoaded', () => {
+      let attempts = 0;
+      const maxAttempts = 10;
+
+      function checkExtension() {
+        if (navigator.outOfBandBinding) {
+          // Extension ready
+          return;
+        }
+        attempts++;
+        if (attempts < maxAttempts) {
+          setTimeout(checkExtension, 100);
+        } else {
+          // Extension not found after retries
+          document.getElementById('no-extension').classList.remove('hidden');
+          document.getElementById('start-section').classList.add('hidden');
+        }
+      }
+
+      checkExtension();
+    });
+
+    // Helper: export public key to base64
+    async function exportPublicKeyB64(publicKey) {
+      const raw = await crypto.subtle.exportKey('raw', publicKey);
+      return btoa(String.fromCharCode(...new Uint8Array(raw)));
+    }
+
+    // Helper: sign a message and return base64 signature
+    async function signMessage(privateKey, message) {
+      const encoder = new TextEncoder();
+      const signature = await crypto.subtle.sign(
+        { name: 'Ed25519' },
+        privateKey,
+        encoder.encode(message)
+      );
+      return btoa(String.fromCharCode(...new Uint8Array(signature)));
+    }
+
+    async function startTransfer() {
+      document.getElementById('start-section').classList.add('hidden');
+      document.getElementById('waiting-section').classList.remove('hidden');
+
+      try {
+        // Call the OOB binding API with a preNegotiate callback
+        // The extension does handshake + initialize, then calls our callback
+        // before showing the pairing UI. This lets us register our download
+        // key directly with the server.
+        const result = await navigator.outOfBandBinding.request({
+          handshakeEndpoint: `${RELAY_URL}/bind/handshake`,
+          initializeEndpoint: `${RELAY_URL}/bind/initialize`,
+          negotiateEndpoint: `${RELAY_URL}/bind/negotiate`,
+          completeEndpoint: `${RELAY_URL}/bind/complete`
+        }, {
+          preNegotiate: async (session) => {
+            // Pre-negotiation demonstrates multi-round-trip capability.
+            // The page can do arbitrary protocol exchanges with the server
+            // before the browser shows the pairing UI.
+
+            // Step 1: Offer supported signature algorithms to the server
+            const offerRes = await fetch(`${RELAY_URL}/pre-negotiate`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                session_id: session.sessionId,
+                step: 'offer',
+                algorithms: ['Ed25519']
+              })
+            });
+
+            if (!offerRes.ok) {
+              const err = await offerRes.json();
+              throw new Error(err.error || 'Algorithm offer failed');
+            }
+
+            const offerResult = await offerRes.json();
+            const selectedAlgorithm = offerResult.algorithm;
+            console.log('[pre-negotiate] Server selected algorithm:', selectedAlgorithm);
+
+            // Step 2: Generate keypair using the server-selected algorithm
+            downloadKeyPair = await crypto.subtle.generateKey(
+              { name: selectedAlgorithm },
+              false,  // non-extractable private key
+              ['sign', 'verify']
+            );
+
+            const downloadPublicKeyB64 = await exportPublicKeyB64(downloadKeyPair.publicKey);
+
+            // Step 3: Register our public key with the server
+            const registerRes = await fetch(`${RELAY_URL}/pre-negotiate`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                session_id: session.sessionId,
+                step: 'register',
+                algorithm: selectedAlgorithm,
+                publicKey: downloadPublicKeyB64
+              })
+            });
+
+            if (!registerRes.ok) {
+              const err = await registerRes.json();
+              throw new Error(err.error || 'Key registration failed');
+            }
+
+            console.log('[pre-negotiate] Download key registered, ready for pairing UI');
+          }
+        });
+
+        if (result.status === 'success') {
+          // Success! Show download section
+          const { fileMetadata, downloadUrl: url } = result.result;
+          downloadUrl = url;
+          fileName = fileMetadata.fileName;
+
+          document.getElementById('waiting-section').classList.add('hidden');
+          document.getElementById('download-section').classList.remove('hidden');
+
+          document.getElementById('file-info').innerHTML = `
+            <h3>${fileMetadata.fileName}</h3>
+            <p>Size: ${formatBytes(fileMetadata.fileSize)}</p>
+            <p>Type: ${fileMetadata.fileType || 'Unknown'}</p>
+          `;
+        } else {
+          throw new Error(result.errorMessage || result.errorCode || 'Unknown error');
+        }
+
+      } catch (err) {
+        document.getElementById('waiting-section').classList.add('hidden');
+        document.getElementById('error-section').classList.remove('hidden');
+        document.getElementById('error-message').textContent = 'Error: ' + err.message;
+      }
+    }
+
+    async function downloadFile() {
+      try {
+        document.getElementById('download-btn').disabled = true;
+        document.getElementById('download-btn').textContent = 'Downloading...';
+
+        // Sign a message to prove we hold the private key
+        const message = 'download-' + Date.now();
+        const publicKeyB64 = await exportPublicKeyB64(downloadKeyPair.publicKey);
+        const signatureB64 = await signMessage(downloadKeyPair.privateKey, message);
+
+        // Fetch the file
+        // Note: This loads the file into memory before showing the save dialog.
+        // A production implementation could use File System Access API on Chrome
+        // for true streaming, with this as a fallback for Firefox.
+        const response = await fetch(downloadUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            public_key: publicKeyB64,
+            message: message,
+            signature: signatureB64
+          })
+        });
+
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Download failed');
+        }
+
+        // Convert to blob and trigger native download
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = fileName;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        document.getElementById('download-btn').textContent = 'Download complete!';
+
+      } catch (err) {
+        document.getElementById('download-section').classList.add('hidden');
+        document.getElementById('error-section').classList.remove('hidden');
+        document.getElementById('error-message').textContent = 'Download error: ' + err.message;
+      }
+    }
+
+    function reset() {
+      downloadUrl = null;
+      fileName = null;
+      downloadKeyPair = null;
+
+      document.getElementById('start-section').classList.remove('hidden');
+      document.getElementById('waiting-section').classList.add('hidden');
+      document.getElementById('download-section').classList.add('hidden');
+      document.getElementById('error-section').classList.add('hidden');
+    }
+
+    function formatBytes(bytes) {
+      if (bytes === 0) return '0 Bytes';
+      const k = 1024;
+      const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+      const i = Math.floor(Math.log(bytes) / Math.log(k));
+      return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+    }
+  </script>
+</body>
+</html>
